@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -59,11 +60,12 @@ private fun App(vm: AppViewModel) {
     val message by vm.message.collectAsState()
     val snackbar = remember { SnackbarHostState() }
 
+    // On efface le message seulement après l'avoir affiché : l'effacer avant relançait
+    // cet effet et annulait aussitôt le snackbar (message invisible).
     LaunchedEffect(message) {
-        message?.let {
-            vm.consumeMessage()
-            snackbar.showSnackbar(it)
-        }
+        val text = message ?: return@LaunchedEffect
+        snackbar.showSnackbar(text, withDismissAction = true, duration = SnackbarDuration.Long)
+        vm.consumeMessage()
     }
 
     Box(Modifier.fillMaxSize()) {

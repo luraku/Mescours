@@ -255,10 +255,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun randomToken(): String =
         ByteArray(24).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
 
+    /** Diagnostic en trois temps : joignable (/ping), jeton accepté, session NotebookLM (/health). */
     fun testBridge(s: AppSettings) = viewModelScope.launch {
         _busy.value = "Test de la passerelle…"
+        val engine = NotebookLmBridgeEngine(s.bridgeUrl, s.bridgeToken)
         _message.value = try {
-            "Passerelle OK : " + NotebookLmBridgeEngine(s.bridgeUrl, s.bridgeToken).health()
+            if (!engine.ping()) {
+                "✗ Passerelle injoignable sur ${s.bridgeUrl} (adresse ou port faux, ou conteneur arrêté)."
+            } else {
+                try {
+                    "✓ Passerelle joignable, jeton accepté, " + engine.health()
+                } catch (e: EngineException) {
+                    val msg = e.message.orEmpty()
+                    when {
+                        "401" in msg -> "✓ Passerelle joignable, mais ✗ jeton refusé : saisissez la valeur BRIDGE_TOKEN du conteneur."
+                        "Session NotebookLM" in msg ->
+                            "✓ Passerelle joignable, jeton accepté. ✗ Compte Google pas encore connecté : « Connecter mon compte Google »."
+                        else -> "✓ Passerelle joignable, jeton accepté. ✗ $msg"
+                    }
+                }
+            }
         } catch (e: Exception) {
             e.message ?: "Erreur inconnue"
         } finally {
