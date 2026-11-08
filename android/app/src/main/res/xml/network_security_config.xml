@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTP en clair autorisé pour joindre la passerelle NotebookLM sur le réseau local
+     (ex. http://192.168.1.20:8765). Les appels Gemini restent en HTTPS. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
