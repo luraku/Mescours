@@ -154,29 +154,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Envoie la stack Compose de la passerelle à PocketDock, la construit, la démarre et configure l'app. */
+    /**
+     * Installe (ou met à jour) la passerelle dans PocketDock : téléchargement de l'image
+     * précompilée, remplacement du conteneur, démarrage, puis configuration de l'app.
+     */
     fun installBridgeOnPocketDock(s: AppSettings) = viewModelScope.launch {
         _busy.value = "Connexion à PocketDock…"
         try {
             val pd = pocketDock(s)
             ensureEngineRunning(pd)
+            _busy.value = "Téléchargement de l'image de la passerelle…\n(plusieurs minutes : la VM de PocketDock est émulée)"
+            pd.pullImage(BridgeBundle.IMAGE)
             val token = s.bridgeToken.ifBlank { randomToken() }
-            _busy.value = "Envoi de la passerelle à PocketDock…"
-            val archive = withContext(Dispatchers.IO) { BridgeBundle.archive(getApplication(), token) }
-            pd.uploadCompose(PocketDockClient.STACK_NAME, archive)
-            // 1) Télécharger l'image précompilée ; 2) en secours seulement, la construire dans la VM.
-            val pulled = runCatching {
-                awaitJob(pd, pd.composePull(PocketDockClient.STACK_NAME), "Téléchargement de l'image de la passerelle…", 30)
-            }.isSuccess
-            if (pulled) {
-                runStack(pd, build = false, "Démarrage de la passerelle…")
-            } else {
-                runStack(pd, build = true,
-                    "Image précompilée indisponible : construction dans PocketDock (très long, VM émulée)…")
-            }
+            _busy.value = "Démarrage du conteneur de la passerelle…"
+            pd.removeContainer(PocketDockClient.CONTAINER_NAME)
+            runBridgeContainer(pd, token)
             val updated = s.copy(bridgeUrl = BridgeBundle.LOCAL_URL, bridgeToken = token)
             persistSettings(updated)
-            waitForBridge(updated, timeoutMs = 180_000)
+            _busy.value = "Attente de la passerelle…"
+            waitForBridge(updated, timeoutMs = 300_000)
             _message.value = "Passerelle installée et démarrée. Connectez maintenant votre compte Google."
         } catch (e: Exception) {
             _message.value = e.message ?: "Erreur pendant l'installation"
@@ -185,20 +181,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private suspend fun runBridgeContainer(pd: PocketDockClient, token: String) = pd.runContainer(
+        image = BridgeBundle.IMAGE,
+        name = PocketDockClient.CONTAINER_NAME,
+        ports = listOf("${BridgeBundle.PORT}:${BridgeBundle.PORT}"),
+        env = listOf("BRIDGE_TOKEN=$token"),
+        volumes = listOf("mescours-data:/data"),
+    )
+
     private suspend fun restartBridgeViaPocketDock() {
         val previous = _busy.value
         try {
             _busy.value = "Démarrage de la passerelle via PocketDock…"
             val pd = pocketDock()
             ensureEngineRunning(pd)
-            runStack(pd, build = false, "Démarrage de la passerelle…")
-            waitForBridge(_settings.value, timeoutMs = 120_000)
+            if (!pd.startContainer(PocketDockClient.CONTAINER_NAME)) {
+                runBridgeContainer(pd, _settings.value.bridgeToken)
+            }
+            waitForBridge(_settings.value, timeoutMs = 300_000)
         } finally {
             _busy.value = previous
         }
     }
 
-    /** Démarre la VM Docker de PocketDock si besoin et attend l'état RUNNING (démarrage lent : VM émulée). */
     private suspend fun ensureEngineRunning(pd: PocketDockClient) {
         var st = pd.status()
         if (st.running) return
@@ -220,26 +225,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             st = pd.status()
         }
         throw EngineException("Le moteur PocketDock n'a pas démarré à temps (${st.summary}).")
-    }
-
-    private suspend fun runStack(pd: PocketDockClient, build: Boolean, label: String) =
-        awaitJob(pd, pd.composeUp(PocketDockClient.STACK_NAME, build), label, if (build) 90 else 30)
-
-    private suspend fun awaitJob(pd: PocketDockClient, jobId: String, label: String, timeoutMinutes: Int) {
-        val deadline = System.currentTimeMillis() + timeoutMinutes * 60_000L
-        while (System.currentTimeMillis() < deadline) {
-            val job = pd.job(jobId)
-            val tail = job.output.lines().filter { it.isNotBlank() }.takeLast(5).joinToString("\n")
-            _busy.value = if (tail.isBlank()) label else "$label\n\n$tail"
-            if (job.done) {
-                if (job.failed) throw EngineException("Échec de la stack PocketDock" +
-                    job.error?.let { " ($it)" }.orEmpty() + " :\n" +
-                    job.output.lines().filter { it.isNotBlank() }.takeLast(8).joinToString("\n"))
-                return
-            }
-            delay(2_000)
-        }
-        throw EngineException("La stack PocketDock n'a pas fini de démarrer à temps.")
     }
 
     private suspend fun waitForBridge(s: AppSettings, timeoutMs: Long) {

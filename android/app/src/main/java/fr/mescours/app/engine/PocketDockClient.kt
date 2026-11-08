@@ -4,7 +4,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -29,6 +32,9 @@ class PocketDockClient(baseUrl: String, private val token: String) {
         .writeTimeout(2, TimeUnit.MINUTES)
         .build()
 
+    /** Téléchargement d'image dans la VM émulée : peut prendre de longues minutes. */
+    private val slowHttp = http.newBuilder().readTimeout(40, TimeUnit.MINUTES).build()
+
     /** État du moteur : STOPPED, PREPARING, BOOTING, RUNNING, STOPPING ou ERROR. */
     data class Status(val state: String, val message: String, val progress: Int?, val version: String?) {
         val running get() = state == "RUNNING"
@@ -45,9 +51,6 @@ class PocketDockClient(baseUrl: String, private val token: String) {
             version?.let { "PocketDock $it" },
         ).joinToString(" · ")
     }
-
-    /** Tâche Compose : RUNNING, SUCCEEDED ou FAILED. */
-    data class Job(val done: Boolean, val failed: Boolean, val output: String, val error: String?)
 
     class HttpError(val code: Int, message: String) : EngineException(message)
 
@@ -68,38 +71,49 @@ class PocketDockClient(baseUrl: String, private val token: String) {
         send("POST", "/engine/start", null)
     }
 
-    /** PUT /v1/compose/<nom> : corps = archive .tar.gz du dossier du projet. */
-    suspend fun uploadCompose(name: String, archive: ByteArray) {
-        send("PUT", "/compose/$name", archive.toRequestBody("application/gzip".toMediaType()))
+    /** POST /v1/images/pull : télécharge (ou met à jour) l'image ; synchrone, peut être long. */
+    suspend fun pullImage(ref: String) {
+        send("POST", "/images/pull", jsonBody("ref" to ref), slow = true)
     }
 
-    /** POST /v1/compose/<nom>/up → identifiant de la tâche (202). */
-    suspend fun composeUp(name: String, build: Boolean): String =
-        composeAction(name, "up", """{"build":$build}""")
-
-    /** POST /v1/compose/<nom>/pull : télécharge les images de la stack → tâche (202). */
-    suspend fun composePull(name: String): String = composeAction(name, "pull", "{}")
-
-    private suspend fun composeAction(name: String, action: String, body: String): String {
-        val raw = send("POST", "/compose/$name/$action", body.toRequestBody(JSON))
-        val obj = runCatching { lenientJson.parseToJsonElement(raw) as? JsonObject }.getOrNull()
-        return obj?.str("id") ?: throw EngineException("PocketDock n'a pas renvoyé de tâche pour « $action ».")
+    /** DELETE /v1/docker/containers/<nom>?force=true ; sans effet si le conteneur n'existe pas. */
+    suspend fun removeContainer(name: String) {
+        try {
+            send("DELETE", "/docker/containers/$name?force=true", null)
+        } catch (e: HttpError) {
+            if (e.code != 404) throw e
+        }
     }
 
-    /** GET /v1/jobs/<id>?tail=N */
-    suspend fun job(id: String, tail: Int = 4000): Job {
-        val obj = getJson("/jobs/$id?tail=$tail") as? JsonObject
-            ?: throw EngineException("Réponse PocketDock illisible (/jobs).")
-        val state = obj.str("state")?.uppercase().orEmpty()
-        val exit = (obj["exitCode"] as? JsonPrimitive)?.intOrNull
-        val failed = state == "FAILED" || (state == "SUCCEEDED" && exit != null && exit != 0)
-        return Job(
-            done = state == "SUCCEEDED" || state == "FAILED",
-            failed = failed,
-            output = obj.str("output").orEmpty(),
-            error = obj.str("error"),
-        )
+    /** POST /v1/docker/containers/<nom>/start ; renvoie false si le conteneur n'existe pas. */
+    suspend fun startContainer(name: String): Boolean = try {
+        send("POST", "/docker/containers/$name/start", null)
+        true
+    } catch (e: HttpError) {
+        when (e.code) {
+            304 -> true // déjà démarré
+            404 -> false
+            else -> throw e
+        }
     }
+
+    /** POST /v1/containers/run : crée et démarre (télécharge l'image si besoin), 201. */
+    suspend fun runContainer(
+        image: String, name: String, ports: List<String>, env: List<String>, volumes: List<String>,
+    ) {
+        val body = buildJsonObject {
+            put("image", image)
+            put("name", name)
+            put("ports", JsonArray(ports.map { JsonPrimitive(it) }))
+            put("env", JsonArray(env.map { JsonPrimitive(it) }))
+            put("volumes", JsonArray(volumes.map { JsonPrimitive(it) }))
+            put("restartAlways", true)
+        }
+        send("POST", "/containers/run", body.toString().toRequestBody(JSON), slow = true)
+    }
+
+    private fun jsonBody(vararg pairs: Pair<String, String>) =
+        buildJsonObject { pairs.forEach { (k, v) -> put(k, v) } }.toString().toRequestBody(JSON)
 
     private fun JsonObject.str(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull
 
@@ -108,7 +122,7 @@ class PocketDockClient(baseUrl: String, private val token: String) {
         return runCatching { lenientJson.parseToJsonElement(raw) }.getOrNull()
     }
 
-    private suspend fun send(method: String, path: String, body: okhttp3.RequestBody?): String = withContext(Dispatchers.IO) {
+    private suspend fun send(method: String, path: String, body: okhttp3.RequestBody?, slow: Boolean = false): String = withContext(Dispatchers.IO) {
         if (token.isBlank()) throw EngineException("Collez le jeton PocketDock dans les Réglages (Moteur → API de contrôle).")
         val request = try {
             Request.Builder().url(base + path)
@@ -119,7 +133,7 @@ class PocketDockClient(baseUrl: String, private val token: String) {
             throw EngineException("Adresse PocketDock invalide : $base", e)
         }
         try {
-            http.newCall(request).execute().use { resp ->
+            (if (slow) slowHttp else http).newCall(request).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 val apiError = runCatching {
                     (lenientJson.parseToJsonElement(raw) as JsonObject).str("error")
@@ -139,6 +153,6 @@ class PocketDockClient(baseUrl: String, private val token: String) {
     companion object {
         private val JSON = "application/json".toMediaType()
         const val DEFAULT_URL = "http://127.0.0.1:7777"
-        const val STACK_NAME = "mescours-bridge"
+        const val CONTAINER_NAME = "mescours-bridge"
     }
 }

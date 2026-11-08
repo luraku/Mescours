@@ -37,14 +37,14 @@ L'app pilote [PocketDock](https://github.com/luraku/pocketdock) par son API de c
    **Installer la passerelle**.
 
 L'app démarre le moteur si besoin (`POST /v1/engine/start`, puis attente de l'état `RUNNING`),
-envoie la stack Compose `mescours-bridge` (`PUT /v1/compose/mescours-bridge`) (sources de la
-passerelle embarquées dans l'APK, avec un `BRIDGE_TOKEN` généré automatiquement), la lance avec
-`{"build":true}`, suit la tâche (`GET /v1/jobs/<id>`) et règle l'adresse `http://127.0.0.1:8765`. La première construction
-télécharge Python et les dépendances dans une VM émulée : comptez de longues minutes.
-PocketDock redirige ensuite le port publié 8765 vers le téléphone.
+télécharge l'image précompilée `ghcr.io/luraku/mescours-bridge:latest` (`POST /v1/images/pull`),
+remplace le conteneur `mescours-bridge` et le lance (`POST /v1/containers/run`, port 8765,
+volume `mescours-data:/data`, `BRIDGE_TOKEN` généré, redémarrage automatique), puis règle
+l'adresse `http://127.0.0.1:8765` et le jeton dans l'app. Pas de Compose ni de construction
+dans la VM : seul le téléchargement prend quelques minutes (VM émulée).
 
 Ensuite, si la passerelle ne répond plus (téléphone redémarré, moteur arrêté…), l'app relance
-automatiquement le moteur et la stack avant de basculer sur Gemini.
+automatiquement le moteur et le conteneur avant de basculer sur Gemini.
 
 ### Sur un autre moteur Docker du téléphone
 
