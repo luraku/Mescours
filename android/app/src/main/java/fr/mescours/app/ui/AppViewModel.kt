@@ -123,6 +123,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun sendGoogleSession(storageStateJson: String, onSuccess: () -> Unit) = viewModelScope.launch {
+        _busy.value = "Envoi de la connexion Google à la passerelle…"
+        try {
+            _message.value = "NotebookLM : " + bridge().importCookies(storageStateJson)
+            onSuccess()
+        } catch (e: Exception) {
+            _message.value = e.message ?: "Erreur pendant l'envoi de la connexion"
+        } finally {
+            _busy.value = null
+        }
+    }
+
     // ---------- Cas d'usage ----------
 
     fun analyzeCourse(child: Child, subject: String, pages: List<File>, onDone: (Course) -> Unit) =

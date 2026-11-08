@@ -13,7 +13,7 @@ Application Android, dans l'esprit de Knowunity, pour réviser les cours des enf
 | | Gemini (par défaut) | NotebookLM (votre compte) |
 |---|---|---|
 | Fonctionnement | L'app appelle directement l'API Gemini | L'app passe par la [passerelle](bridge/README.md) qui pilote votre NotebookLM |
-| À installer | Rien : une clé gratuite sur [aistudio.google.com](https://aistudio.google.com) | Un PC allumé avec la passerelle Python |
+| À installer | Rien : une clé gratuite sur [aistudio.google.com](https://aistudio.google.com) | Le conteneur Docker de la passerelle (sur le téléphone ou un serveur) ; connexion Google faite dans l'app |
 | Résultat | Fiches et quiz dans l'app | Fiches et quiz dans l'app **et** un carnet par cours dans NotebookLM |
 | Fiabilité | API officielle et stable | Bibliothèque non officielle, peut casser |
 
@@ -23,7 +23,7 @@ est renseignée, l'app bascule automatiquement sur Gemini.
 ## Récupérer l'APK
 
 À chaque push, GitHub Actions construit l'application (onglet **Actions → APK Android → artefact
-`mescours-apk`**). Décompressez l'archive, copiez `app-debug.apk` sur le téléphone et ouvrez-la
+`mescours-apk`**). Les Actions doivent être actives sur le compte GitHub (*Settings → Billing*). Décompressez l'archive, copiez `app-debug.apk` sur le téléphone et ouvrez-la
 (autorisez l'installation depuis des sources inconnues).
 
 Pour garder les mises à jour installables par-dessus l'ancienne version, signez la release :

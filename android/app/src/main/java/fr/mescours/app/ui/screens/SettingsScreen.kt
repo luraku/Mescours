@@ -33,7 +33,7 @@ import fr.mescours.app.data.EngineType
 import fr.mescours.app.ui.AppViewModel
 
 @Composable
-fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
+fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -> Unit) {
     val initial = remember { vm.settings.value }
     var engine by remember { mutableStateOf(initial.engine) }
     var apiKey by remember { mutableStateOf(initial.geminiApiKey) }
@@ -76,17 +76,29 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             HorizontalDivider()
             Text("Passerelle NotebookLM", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                "Lancez la passerelle (dossier bridge/ du projet) sur un PC connecté à votre compte Google, " +
-                    "puis indiquez son adresse, par ex. http://192.168.1.20:8765",
+                "Lancez le conteneur Docker de la passerelle (dossier bridge/ du projet), puis indiquez son adresse : " +
+                    "http://127.0.0.1:8765 s'il tourne sur ce téléphone (ex. PocketDock), sinon l'IP du PC ou du serveur.",
                 style = MaterialTheme.typography.bodySmall,
             )
-            OutlinedTextField(bridgeUrl, { bridgeUrl = it }, label = { Text("Adresse de la passerelle") }, singleLine = true,
+            OutlinedTextField(bridgeUrl, { bridgeUrl = it }, label = { Text("Adresse de la passerelle") }, placeholder = { Text("http://127.0.0.1:8765") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
             OutlinedTextField(bridgeToken, { bridgeToken = it }, label = { Text("Jeton d'accès (BRIDGE_TOKEN)") }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-            OutlinedButton(onClick = { vm.testBridge(current()) }, enabled = bridgeUrl.isNotBlank()) {
-                Text("Tester la passerelle")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { vm.testBridge(current()) }, enabled = bridgeUrl.isNotBlank()) {
+                    Text("Tester")
+                }
+                Button(
+                    onClick = { vm.saveSettings(current()); onNotebookLmLogin() },
+                    enabled = bridgeUrl.isNotBlank(),
+                ) { Text("Connecter mon compte Google") }
             }
+            Text(
+                "Connectez-vous à NotebookLM dans l'app : la session est transmise à la passerelle " +
+                    "(à refaire si Google la fait expirer).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             Button(onClick = { vm.saveSettings(current()); onBack() }, modifier = Modifier.fillMaxWidth()) {
                 Text("Enregistrer")

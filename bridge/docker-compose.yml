@@ -1,0 +1,14 @@
+services:
+  mescours-bridge:
+    build: .
+    image: mescours-bridge:latest
+    container_name: mescours-bridge
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      # Jeton à recopier dans l'app (Réglages → Passerelle NotebookLM).
+      BRIDGE_TOKEN: "${BRIDGE_TOKEN:-change-moi}"
+      # MESCOURS_UPLOAD_AS_PDF: "1"
+    volumes:
+      - ./data:/data

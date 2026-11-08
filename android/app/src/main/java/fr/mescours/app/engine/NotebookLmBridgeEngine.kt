@@ -44,6 +44,16 @@ class NotebookLmBridgeEngine(baseUrl: String, private val token: String) : Study
             .getOrDefault(raw.take(100))
     }
 
+    /** Envoie la session Google capturée dans la WebView (format Playwright storage_state). */
+    suspend fun importCookies(storageStateJson: String): String = withContext(Dispatchers.IO) {
+        val raw = call(
+            Request.Builder().url("$base/auth/cookies")
+                .post(storageStateJson.toRequestBody("application/json".toMediaType()))
+        )
+        runCatching { lenientJson.parseToJsonElement(raw).jsonObject["status"]!!.jsonPrimitive.content }
+            .getOrDefault("Compte connecté")
+    }
+
     override suspend fun structureCourse(pages: List<File>, subject: String, grade: String): StructuredCourse =
         withContext(Dispatchers.IO) {
             val body = MultipartBody.Builder().setType(MultipartBody.FORM)
@@ -92,7 +102,7 @@ class NotebookLmBridgeEngine(baseUrl: String, private val token: String) : Study
         } catch (e: IllegalArgumentException) {
             throw EngineException("Adresse de passerelle invalide : $base", e)
         }
-        try {
+        return try {
             http.newCall(request).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
@@ -101,10 +111,10 @@ class NotebookLmBridgeEngine(baseUrl: String, private val token: String) : Study
                     }.getOrDefault(raw.take(300))
                     throw EngineException("Passerelle NotebookLM (${resp.code}) : $detail")
                 }
-                return raw
+                raw
             }
         } catch (e: java.io.IOException) {
-            throw EngineException("Passerelle injoignable ($base). Le PC est-il allumé et sur le même réseau ?", e)
+            throw EngineException("Passerelle injoignable ($base). Le conteneur Docker (ou le PC) est-il démarré ?", e)
         }
     }
 }

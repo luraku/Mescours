@@ -18,6 +18,8 @@ import logging
 import os
 import re
 import secrets
+import subprocess
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -52,7 +54,7 @@ async def notebooklm_error(_request: Request, exc: Exception) -> JSONResponse:
     log.exception("Erreur NotebookLM")
     text = str(exc) or exc.__class__.__name__
     if "auth" in exc.__class__.__name__.lower() or "storage" in text.lower() or "cookie" in text.lower():
-        detail = f"Session NotebookLM absente ou expirée : lancez « notebooklm login » sur le PC. ({text})"
+        detail = f"Session NotebookLM absente ou expirée : dans l'app, Réglages → « Connecter mon compte Google ». ({text})"
     else:
         detail = f"NotebookLM : {text}"
     return JSONResponse(status_code=502, content={"detail": detail[:500]})
@@ -132,6 +134,36 @@ class ThemeRequest(BaseModel):
     grade: str = ""
     theme: str
     count: int = Field(default=10, ge=1, le=30)
+
+
+@app.post("/auth/cookies")
+async def import_cookies(request: Request, _: None = Depends(require_token)) -> dict[str, Any]:
+    """Reçoit les cookies Google (format Playwright storage_state ou liste de cookies)
+    capturés par l'app après connexion dans sa WebView, et les enregistre pour notebooklm-py.
+
+    Remplace `notebooklm login`, qui a besoin d'un navigateur absent du conteneur."""
+    payload = await request.body()
+    try:
+        json.loads(payload)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"JSON de cookies invalide : {e}") from e
+    cmd = [sys.executable, "-m", "notebooklm"]
+    if NOTEBOOKLM_PROFILE:
+        cmd += ["-p", NOTEBOOKLM_PROFILE]
+    cmd += ["auth", "import-cookies", "-", "--quiet"]
+    proc = subprocess.run(cmd, input=payload, capture_output=True, timeout=60)
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout).decode(errors="replace").strip()
+        raise HTTPException(status_code=400, detail=f"Cookies refusés : {err[-400:]}")
+    async with client() as nlm:
+        notebooks = await nlm.notebooks.list()
+    return {"status": f"compte connecté ({len(notebooks)} carnets)"}
+
+
+@app.get("/ping")
+async def ping() -> dict[str, str]:
+    """Vivacité du conteneur, sans appel à NotebookLM ni jeton."""
+    return {"status": "ok"}
 
 
 @app.get("/health")

@@ -35,6 +35,7 @@ import fr.mescours.app.ui.AppViewModel
 import fr.mescours.app.ui.screens.CaptureScreen
 import fr.mescours.app.ui.screens.ExercisesScreen
 import fr.mescours.app.ui.screens.HomeScreen
+import fr.mescours.app.ui.screens.NotebookLmLoginScreen
 import fr.mescours.app.ui.screens.QuizScreen
 import fr.mescours.app.ui.screens.SettingsScreen
 import fr.mescours.app.ui.screens.SubjectScreen
@@ -80,7 +81,10 @@ private fun App(vm: AppViewModel) {
                     nav.navigate("subject/${Uri.encode(subject)}") { popUpTo("home") }
                 })
             }
-            composable("settings") { SettingsScreen(vm, onBack = { nav.popBackStack() }) }
+            composable("settings") {
+                SettingsScreen(vm, onBack = { nav.popBackStack() }, onNotebookLmLogin = { nav.navigate("nlm-login") })
+            }
+            composable("nlm-login") { NotebookLmLoginScreen(vm, onBack = { nav.popBackStack() }) }
             composable("subject/{subject}", listOf(navArgument("subject") { type = NavType.StringType })) { entry ->
                 val subject = entry.arguments?.getString("subject").orEmpty()
                 SubjectScreen(vm, subject, onBack = { nav.popBackStack() }) { courseId, themeId ->
