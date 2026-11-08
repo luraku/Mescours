@@ -74,10 +74,16 @@ class PocketDockClient(baseUrl: String, private val token: String) {
     }
 
     /** POST /v1/compose/<nom>/up → identifiant de la tâche (202). */
-    suspend fun composeUp(name: String, build: Boolean): String {
-        val raw = send("POST", "/compose/$name/up", """{"build":$build}""".toRequestBody(JSON))
+    suspend fun composeUp(name: String, build: Boolean): String =
+        composeAction(name, "up", """{"build":$build}""")
+
+    /** POST /v1/compose/<nom>/pull : télécharge les images de la stack → tâche (202). */
+    suspend fun composePull(name: String): String = composeAction(name, "pull", "{}")
+
+    private suspend fun composeAction(name: String, action: String, body: String): String {
+        val raw = send("POST", "/compose/$name/$action", body.toRequestBody(JSON))
         val obj = runCatching { lenientJson.parseToJsonElement(raw) as? JsonObject }.getOrNull()
-        return obj?.str("id") ?: throw EngineException("PocketDock n'a pas renvoyé de tâche pour « up ».")
+        return obj?.str("id") ?: throw EngineException("PocketDock n'a pas renvoyé de tâche pour « $action ».")
     }
 
     /** GET /v1/jobs/<id>?tail=N */

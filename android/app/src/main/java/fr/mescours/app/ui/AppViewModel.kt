@@ -164,7 +164,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _busy.value = "Envoi de la passerelle à PocketDock…"
             val archive = withContext(Dispatchers.IO) { BridgeBundle.archive(getApplication(), token) }
             pd.uploadCompose(PocketDockClient.STACK_NAME, archive)
-            runStack(pd, build = true, "Construction de la passerelle dans PocketDock (de longues minutes la première fois)…")
+            // 1) Télécharger l'image précompilée ; 2) en secours seulement, la construire dans la VM.
+            val pulled = runCatching {
+                awaitJob(pd, pd.composePull(PocketDockClient.STACK_NAME), "Téléchargement de l'image de la passerelle…", 30)
+            }.isSuccess
+            if (pulled) {
+                runStack(pd, build = false, "Démarrage de la passerelle…")
+            } else {
+                runStack(pd, build = true,
+                    "Image précompilée indisponible : construction dans PocketDock (très long, VM émulée)…")
+            }
             val updated = s.copy(bridgeUrl = BridgeBundle.LOCAL_URL, bridgeToken = token)
             persistSettings(updated)
             waitForBridge(updated, timeoutMs = 180_000)
@@ -213,9 +222,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         throw EngineException("Le moteur PocketDock n'a pas démarré à temps (${st.summary}).")
     }
 
-    private suspend fun runStack(pd: PocketDockClient, build: Boolean, label: String) {
-        val jobId = pd.composeUp(PocketDockClient.STACK_NAME, build)
-        val deadline = System.currentTimeMillis() + 45 * 60_000
+    private suspend fun runStack(pd: PocketDockClient, build: Boolean, label: String) =
+        awaitJob(pd, pd.composeUp(PocketDockClient.STACK_NAME, build), label, if (build) 90 else 30)
+
+    private suspend fun awaitJob(pd: PocketDockClient, jobId: String, label: String, timeoutMinutes: Int) {
+        val deadline = System.currentTimeMillis() + timeoutMinutes * 60_000L
         while (System.currentTimeMillis() < deadline) {
             val job = pd.job(jobId)
             val tail = job.output.lines().filter { it.isNotBlank() }.takeLast(5).joinToString("\n")
