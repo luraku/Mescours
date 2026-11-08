@@ -13,6 +13,8 @@ data class AppSettings(
     val geminiModel: String = DEFAULT_GEMINI_MODEL,
     val bridgeUrl: String = "",
     val bridgeToken: String = "",
+    val pocketDockUrl: String = "http://127.0.0.1:7777",
+    val pocketDockToken: String = "",
 ) {
     companion object {
         const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
@@ -30,6 +32,8 @@ class SettingsStore(context: Context) {
             ?: AppSettings.DEFAULT_GEMINI_MODEL,
         bridgeUrl = prefs.getString("bridgeUrl", "") ?: "",
         bridgeToken = prefs.getString("bridgeToken", "") ?: "",
+        pocketDockUrl = prefs.getString("pocketDockUrl", null)?.takeIf { it.isNotBlank() } ?: "http://127.0.0.1:7777",
+        pocketDockToken = prefs.getString("pocketDockToken", "") ?: "",
     )
 
     fun save(s: AppSettings) {
@@ -39,6 +43,8 @@ class SettingsStore(context: Context) {
             .putString("geminiModel", s.geminiModel.trim())
             .putString("bridgeUrl", s.bridgeUrl.trim().trimEnd('/'))
             .putString("bridgeToken", s.bridgeToken.trim())
+            .putString("pocketDockUrl", s.pocketDockUrl.trim().trimEnd('/'))
+            .putString("pocketDockToken", s.pocketDockToken.trim())
             .apply()
     }
 }

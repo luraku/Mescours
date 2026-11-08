@@ -13,7 +13,7 @@ Application Android, dans l'esprit de Knowunity, pour réviser les cours des enf
 | | Gemini (par défaut) | NotebookLM (votre compte) |
 |---|---|---|
 | Fonctionnement | L'app appelle directement l'API Gemini | L'app passe par la [passerelle](bridge/README.md) qui pilote votre NotebookLM |
-| À installer | Rien : une clé gratuite sur [aistudio.google.com](https://aistudio.google.com) | Le conteneur Docker de la passerelle (sur le téléphone ou un serveur) ; connexion Google faite dans l'app |
+| À installer | Rien : une clé gratuite sur [aistudio.google.com](https://aistudio.google.com) | PocketDock sur le téléphone : l'app y installe et y relance la passerelle elle-même ; connexion Google faite dans l'app |
 | Résultat | Fiches et quiz dans l'app | Fiches et quiz dans l'app **et** un carnet par cours dans NotebookLM |
 | Fiabilité | API officielle et stable | Bibliothèque non officielle, peut casser |
 
@@ -44,7 +44,9 @@ cd android && ./gradlew assembleDebug
 ## Premier lancement
 
 1. Ajoutez un enfant (prénom et classe : la classe ajuste le niveau des fiches et des quiz).
-2. **Réglages** : collez la clé Gemini et/ou configurez la passerelle NotebookLM.
+2. **Réglages** : collez la clé Gemini et/ou, pour NotebookLM, le jeton PocketDock
+   (Moteur → API de contrôle → Copier) puis **Installer la passerelle** et
+   **Connecter mon compte Google**.
 3. **Nouveau cours** → matière → photos → « Créer les fiches par thème ».
 
 ## Organisation du code

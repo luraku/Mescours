@@ -27,14 +27,26 @@ docker run -d --name mescours-bridge --restart unless-stopped \
 
 La session Google est conservée dans `./data` (volume `/data`), donc elle survit aux redémarrages.
 
-### Sur le téléphone (PocketDock, Pockr…)
+### Sur le téléphone avec PocketDock : installation depuis l'app
 
-Si vous faites tourner Docker sur le téléphone lui-même, créez le conteneur à partir de ce
-dossier (ou d'une image construite sur un PC puis importée) en publiant le port `8765`, la
-variable `BRIDGE_TOKEN` et un volume pour `/data`. L'image est en `python:3.12-slim`, compatible
-arm64. Dans l'app, l'adresse est alors `http://127.0.0.1:8765`.
-Si votre outil fait tourner Docker dans une machine virtuelle, vérifiez que le port 8765 de la
-VM est bien redirigé vers le téléphone.
+L'app pilote PocketDock par son API de contrôle (`http://127.0.0.1:7777/v1/`) :
+1. Dans PocketDock : onglet **Moteur → « API de contrôle » → Copier** (en APK release,
+   activez d'abord l'interrupteur de l'API).
+2. Dans Mes Cours : **Réglages → PocketDock**, collez le jeton, **Tester**, puis
+   **Installer la passerelle**.
+
+L'app démarre le moteur si besoin, envoie la stack Compose `mescours-bridge` (sources de la
+passerelle embarquées dans l'APK, avec un `BRIDGE_TOKEN` généré automatiquement), la lance,
+suit la construction et règle l'adresse `http://127.0.0.1:8765`. La première construction
+télécharge Python et les dépendances : comptez quelques minutes.
+
+Ensuite, si la passerelle ne répond plus (téléphone redémarré, moteur arrêté…), l'app relance
+automatiquement le moteur et la stack avant de basculer sur Gemini.
+
+### Sur un autre moteur Docker du téléphone
+
+Créez le conteneur depuis ce dossier en publiant le port `8765`, la variable `BRIDGE_TOKEN` et
+un volume pour `/data`, puis utilisez l'adresse `http://127.0.0.1:8765` dans l'app.
 
 ### Connecter votre compte
 

@@ -5,6 +5,17 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Sources de la passerelle NotebookLM (dossier bridge/ du dépôt) embarquées dans l'APK,
+// pour que l'app puisse les déployer dans PocketDock.
+val bridgeAssetsDir = layout.buildDirectory.dir("generated/bridgeAssets")
+val syncBridgeAssets by tasks.registering(Sync::class) {
+    from(rootProject.file("../bridge")) {
+        include("Dockerfile", "requirements.txt", "server.py", "prompts.py")
+    }
+    into(bridgeAssetsDir.map { it.dir("bridge") })
+}
+tasks.named("preBuild") { dependsOn(syncBridgeAssets) }
+
 android {
     namespace = "fr.mescours.app"
     compileSdk = 35
@@ -44,6 +55,8 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    sourceSets["main"].assets.srcDir(bridgeAssetsDir.get().asFile)
+
     buildFeatures {
         compose = true
     }

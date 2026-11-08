@@ -18,7 +18,7 @@ interface StudyEngine {
     suspend fun generateExercises(course: Course, theme: Theme, grade: String, count: Int): List<Exercise>
 }
 
-class EngineException(message: String, cause: Throwable? = null) : Exception(message, cause)
+open class EngineException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 internal val lenientJson = Json {
     ignoreUnknownKeys = true

@@ -38,6 +38,13 @@ class NotebookLmBridgeEngine(baseUrl: String, private val token: String) : Study
         .writeTimeout(5, TimeUnit.MINUTES)
         .build()
 
+    /** Vivacité du conteneur (sans jeton ni appel à NotebookLM). */
+    suspend fun ping(): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            http.newCall(Request.Builder().url("$base/ping").get().build()).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
+
     suspend fun health(): String = withContext(Dispatchers.IO) {
         val raw = call(Request.Builder().url("$base/health").get())
         runCatching { lenientJson.parseToJsonElement(raw).jsonObject["status"]!!.jsonPrimitive.content }

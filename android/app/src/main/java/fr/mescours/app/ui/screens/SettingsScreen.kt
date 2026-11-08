@@ -19,6 +19,8 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,8 +42,17 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -
     var model by remember { mutableStateOf(initial.geminiModel) }
     var bridgeUrl by remember { mutableStateOf(initial.bridgeUrl) }
     var bridgeToken by remember { mutableStateOf(initial.bridgeToken) }
+    var pdUrl by remember { mutableStateOf(initial.pocketDockUrl) }
+    var pdToken by remember { mutableStateOf(initial.pocketDockToken) }
     fun current() = initial.copy(engine = engine, geminiApiKey = apiKey, geminiModel = model,
-        bridgeUrl = bridgeUrl, bridgeToken = bridgeToken)
+        bridgeUrl = bridgeUrl, bridgeToken = bridgeToken, pocketDockUrl = pdUrl, pocketDockToken = pdToken)
+
+    // L'installation via PocketDock renseigne elle-même l'adresse et le jeton de la passerelle.
+    val saved by vm.settings.collectAsState()
+    LaunchedEffect(saved.bridgeUrl, saved.bridgeToken) {
+        if (saved.bridgeUrl.isNotBlank()) bridgeUrl = saved.bridgeUrl
+        if (saved.bridgeToken.isNotBlank()) bridgeToken = saved.bridgeToken
+    }
 
     Scaffold(topBar = { BackTopBar("Réglages", onBack) }) { padding ->
         Column(
@@ -72,6 +83,25 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -
                 visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             OutlinedTextField(model, { model = it }, label = { Text("Modèle") }, singleLine = true,
                 modifier = Modifier.fillMaxWidth())
+
+            HorizontalDivider()
+            Text("PocketDock (Docker sur ce téléphone)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Jeton : dans PocketDock, onglet Moteur → « API de contrôle » → Copier. " +
+                    "L'app installe alors la passerelle NotebookLM dans PocketDock et la redémarre si besoin.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedTextField(pdUrl, { pdUrl = it }, label = { Text("Adresse de l'API PocketDock") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(pdToken, { pdToken = it }, label = { Text("Jeton PocketDock") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { vm.testPocketDock(current()) }, enabled = pdToken.isNotBlank()) { Text("Tester") }
+                Button(onClick = {
+                    vm.saveSettings(current())
+                    vm.installBridgeOnPocketDock(current())
+                }, enabled = pdToken.isNotBlank()) { Text("Installer la passerelle") }
+            }
 
             HorizontalDivider()
             Text("Passerelle NotebookLM", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
