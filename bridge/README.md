@@ -29,16 +29,19 @@ La session Google est conservée dans `./data` (volume `/data`), donc elle survi
 
 ### Sur le téléphone avec PocketDock : installation depuis l'app
 
-L'app pilote PocketDock par son API de contrôle (`http://127.0.0.1:7777/v1/`) :
+L'app pilote [PocketDock](https://github.com/luraku/pocketdock) par son API de contrôle
+(`http://127.0.0.1:7777/v1`, voir `docs/control-api.md` de PocketDock) :
 1. Dans PocketDock : onglet **Moteur → « API de contrôle » → Copier** (en APK release,
    activez d'abord l'interrupteur de l'API).
 2. Dans Mes Cours : **Réglages → PocketDock**, collez le jeton, **Tester**, puis
    **Installer la passerelle**.
 
-L'app démarre le moteur si besoin, envoie la stack Compose `mescours-bridge` (sources de la
-passerelle embarquées dans l'APK, avec un `BRIDGE_TOKEN` généré automatiquement), la lance,
-suit la construction et règle l'adresse `http://127.0.0.1:8765`. La première construction
-télécharge Python et les dépendances : comptez quelques minutes.
+L'app démarre le moteur si besoin (`POST /v1/engine/start`, puis attente de l'état `RUNNING`),
+envoie la stack Compose `mescours-bridge` (`PUT /v1/compose/mescours-bridge`) (sources de la
+passerelle embarquées dans l'APK, avec un `BRIDGE_TOKEN` généré automatiquement), la lance avec
+`{"build":true}`, suit la tâche (`GET /v1/jobs/<id>`) et règle l'adresse `http://127.0.0.1:8765`. La première construction
+télécharge Python et les dépendances dans une VM émulée : comptez de longues minutes.
+PocketDock redirige ensuite le port publié 8765 vers le téléphone.
 
 Ensuite, si la passerelle ne répond plus (téléphone redémarré, moteur arrêté…), l'app relance
 automatiquement le moteur et la stack avant de basculer sur Gemini.

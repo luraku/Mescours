@@ -164,7 +164,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _busy.value = "Envoi de la passerelle à PocketDock…"
             val archive = withContext(Dispatchers.IO) { BridgeBundle.archive(getApplication(), token) }
             pd.uploadCompose(PocketDockClient.STACK_NAME, archive)
-            runStack(pd, "Construction de la passerelle sur le téléphone (plusieurs minutes la première fois)…")
+            runStack(pd, build = true, "Construction de la passerelle dans PocketDock (de longues minutes la première fois)…")
             val updated = s.copy(bridgeUrl = BridgeBundle.LOCAL_URL, bridgeToken = token)
             persistSettings(updated)
             waitForBridge(updated, timeoutMs = 180_000)
@@ -182,34 +182,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _busy.value = "Démarrage de la passerelle via PocketDock…"
             val pd = pocketDock()
             ensureEngineRunning(pd)
-            runStack(pd, "Démarrage de la passerelle…")
+            runStack(pd, build = false, "Démarrage de la passerelle…")
             waitForBridge(_settings.value, timeoutMs = 120_000)
         } finally {
             _busy.value = previous
         }
     }
 
+    /** Démarre la VM Docker de PocketDock si besoin et attend l'état RUNNING (démarrage lent : VM émulée). */
     private suspend fun ensureEngineRunning(pd: PocketDockClient) {
-        if (pd.status().running == true) return
-        _busy.value = "Démarrage du moteur PocketDock…"
-        pd.startEngine()
-        repeat(45) {
-            val running = runCatching { pd.status().running }.getOrNull()
-            if (running == true || running == null) return
-            delay(2_000)
+        var st = pd.status()
+        if (st.running) return
+        val deadline = System.currentTimeMillis() + 15 * 60_000
+        var startRequested = false
+        while (System.currentTimeMillis() < deadline) {
+            if (st.running) return
+            if (st.state == "ERROR" && startRequested) {
+                throw EngineException("Le moteur PocketDock est en erreur : ${st.message}")
+            }
+            if (!startRequested && !st.starting && st.state != "STOPPING") {
+                pd.startEngine()
+                startRequested = true
+            }
+            val progress = st.progress?.let { " ($it %)" }.orEmpty()
+            _busy.value = "Démarrage du moteur PocketDock$progress…" +
+                st.message.takeIf { it.isNotBlank() }?.let { "\n$it" }.orEmpty()
+            delay(3_000)
+            st = pd.status()
         }
-        throw EngineException("Le moteur PocketDock ne démarre pas.")
+        throw EngineException("Le moteur PocketDock n'a pas démarré à temps (${st.summary}).")
     }
 
-    private suspend fun runStack(pd: PocketDockClient, label: String) {
-        val jobId = pd.composeUp(PocketDockClient.STACK_NAME) ?: return
-        val deadline = System.currentTimeMillis() + 25 * 60_000
+    private suspend fun runStack(pd: PocketDockClient, build: Boolean, label: String) {
+        val jobId = pd.composeUp(PocketDockClient.STACK_NAME, build)
+        val deadline = System.currentTimeMillis() + 45 * 60_000
         while (System.currentTimeMillis() < deadline) {
             val job = pd.job(jobId)
             val tail = job.output.lines().filter { it.isNotBlank() }.takeLast(5).joinToString("\n")
             _busy.value = if (tail.isBlank()) label else "$label\n\n$tail"
             if (job.done) {
-                if (job.failed) throw EngineException("Échec du démarrage de la stack :\n" +
+                if (job.failed) throw EngineException("Échec de la stack PocketDock" +
+                    job.error?.let { " ($it)" }.orEmpty() + " :\n" +
                     job.output.lines().filter { it.isNotBlank() }.takeLast(8).joinToString("\n"))
                 return
             }

@@ -2,14 +2,11 @@ package fr.mescours.app.engine
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,10 +14,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 /**
- * Client de l'API de contrôle PocketDock (http://127.0.0.1:7777/v1/), qui fait tourner
- * Docker sur le téléphone. Sert à installer et (re)démarrer la passerelle NotebookLM.
- *
- * Les formats de réponse sont lus de façon tolérante (plusieurs noms de champs possibles).
+ * Client de l'API de contrôle PocketDock (https://github.com/luraku/pocketdock,
+ * docs/control-api.md) : http://127.0.0.1:7777/v1, jeton en `Authorization: Bearer`.
+ * Sert à installer et (re)démarrer la passerelle NotebookLM dans la VM Docker du téléphone.
+ * Les ports publiés par la stack sont redirigés par PocketDock vers 127.0.0.1 du téléphone.
  */
 class PocketDockClient(baseUrl: String, private val token: String) {
 
@@ -32,64 +29,73 @@ class PocketDockClient(baseUrl: String, private val token: String) {
         .writeTimeout(2, TimeUnit.MINUTES)
         .build()
 
-    data class Status(val running: Boolean?, val summary: String)
+    /** État du moteur : STOPPED, PREPARING, BOOTING, RUNNING, STOPPING ou ERROR. */
+    data class Status(val state: String, val message: String, val progress: Int?, val version: String?) {
+        val running get() = state == "RUNNING"
+        val starting get() = state == "PREPARING" || state == "BOOTING"
+        val summary get() = listOfNotNull(
+            when (state) {
+                "RUNNING" -> "moteur démarré"
+                "STOPPED" -> "moteur arrêté"
+                "PREPARING", "BOOTING" -> "moteur en cours de démarrage"
+                "STOPPING" -> "moteur en cours d'arrêt"
+                "ERROR" -> "moteur en erreur" + message.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
+                else -> "état $state"
+            },
+            version?.let { "PocketDock $it" },
+        ).joinToString(" · ")
+    }
 
-    data class Job(val done: Boolean, val failed: Boolean, val output: String)
+    /** Tâche Compose : RUNNING, SUCCEEDED ou FAILED. */
+    data class Job(val done: Boolean, val failed: Boolean, val output: String, val error: String?)
 
     class HttpError(val code: Int, message: String) : EngineException(message)
 
+    /** GET /v1/status */
     suspend fun status(): Status {
-        val json = getJson("/status")
-        val obj = json as? JsonObject
-        val running = obj?.let { o ->
-            o.bool("running") ?: o.bool("engineRunning")
-                ?: (o["engine"] as? JsonObject)?.let { it.bool("running") ?: it.str("state")?.let(::isRunningState) }
-                ?: (o.str("state") ?: o.str("status") ?: o.str("engine"))?.let(::isRunningState)
-        }
-        val version = obj?.let { it.str("version") ?: (it["engine"] as? JsonObject)?.str("version") }
-        val state = when (running) { true -> "moteur démarré"; false -> "moteur arrêté"; null -> "état inconnu" }
-        return Status(running, listOfNotNull(state, version?.let { "version $it" }).joinToString(" · "))
+        val o = getJson("/status") as? JsonObject ?: throw EngineException("Réponse PocketDock illisible (/status).")
+        val engine = o["engine"] as? JsonObject
+        return Status(
+            state = engine?.str("state")?.uppercase() ?: "UNKNOWN",
+            message = engine?.str("message").orEmpty(),
+            progress = (engine?.get("progress") as? JsonPrimitive)?.intOrNull,
+            version = o.str("version"),
+        )
     }
 
+    /** POST /v1/engine/start (202, à suivre avec status()). */
     suspend fun startEngine() {
-        try {
-            send("POST", "/engine/start", null)
-        } catch (e: HttpError) {
-            if (e.code != 409) throw e // 409 = déjà démarré
-        }
+        send("POST", "/engine/start", null)
     }
 
+    /** PUT /v1/compose/<nom> : corps = archive .tar.gz du dossier du projet. */
     suspend fun uploadCompose(name: String, archive: ByteArray) {
         send("PUT", "/compose/$name", archive.toRequestBody("application/gzip".toMediaType()))
     }
 
-    /** Démarre la stack ; renvoie l'identifiant de la tâche à suivre (null si l'appel est synchrone). */
-    suspend fun composeUp(name: String): String? {
-        val raw = send("POST", "/compose/$name/up", "{}".toRequestBody(JSON))
-        val obj = runCatching { lenientJson.parseToJsonElement(raw) as? JsonObject }.getOrNull() ?: return null
-        return obj.str("id") ?: obj.str("jobId") ?: obj.str("job_id")
-            ?: (obj["job"] as? JsonObject)?.str("id") ?: obj.str("job")
+    /** POST /v1/compose/<nom>/up → identifiant de la tâche (202). */
+    suspend fun composeUp(name: String, build: Boolean): String {
+        val raw = send("POST", "/compose/$name/up", """{"build":$build}""".toRequestBody(JSON))
+        val obj = runCatching { lenientJson.parseToJsonElement(raw) as? JsonObject }.getOrNull()
+        return obj?.str("id") ?: throw EngineException("PocketDock n'a pas renvoyé de tâche pour « up ».")
     }
 
-    suspend fun job(id: String): Job {
-        val obj = getJson("/jobs/$id") as? JsonObject ?: return Job(true, false, "")
-        val state = (obj.str("status") ?: obj.str("state") ?: "").lowercase()
-        val exit = obj["exitCode"]?.let { (it as? JsonPrimitive)?.intOrNull } ?: obj["exit_code"]?.let { (it as? JsonPrimitive)?.intOrNull }
-        val failed = state in setOf("failed", "error", "errored", "cancelled", "canceled") || (exit != null && exit != 0)
-        val done = failed || obj.bool("done") == true || obj.bool("finished") == true || exit != null ||
-            state in setOf("done", "finished", "succeeded", "success", "completed", "complete", "exited")
-        val output = when (val o = obj["output"] ?: obj["log"] ?: obj["logs"] ?: obj["lines"] ?: obj["stdout"]) {
-            is JsonArray -> o.joinToString("\n") { (it as? JsonPrimitive)?.contentOrNull ?: it.toString() }
-            is JsonPrimitive -> o.contentOrNull.orEmpty()
-            else -> ""
-        }
-        return Job(done, failed, output)
+    /** GET /v1/jobs/<id>?tail=N */
+    suspend fun job(id: String, tail: Int = 4000): Job {
+        val obj = getJson("/jobs/$id?tail=$tail") as? JsonObject
+            ?: throw EngineException("Réponse PocketDock illisible (/jobs).")
+        val state = obj.str("state")?.uppercase().orEmpty()
+        val exit = (obj["exitCode"] as? JsonPrimitive)?.intOrNull
+        val failed = state == "FAILED" || (state == "SUCCEEDED" && exit != null && exit != 0)
+        return Job(
+            done = state == "SUCCEEDED" || state == "FAILED",
+            failed = failed,
+            output = obj.str("output").orEmpty(),
+            error = obj.str("error"),
+        )
     }
-
-    private fun isRunningState(s: String) = s.lowercase().let { it.contains("run") || it == "started" || it == "up" }
 
     private fun JsonObject.str(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull
-    private fun JsonObject.bool(key: String) = (this[key] as? JsonPrimitive)?.booleanOrNull
 
     private suspend fun getJson(path: String): JsonElement? {
         val raw = send("GET", path, null)
@@ -109,11 +115,14 @@ class PocketDockClient(baseUrl: String, private val token: String) {
         try {
             http.newCall(request).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
+                val apiError = runCatching {
+                    (lenientJson.parseToJsonElement(raw) as JsonObject).str("error")
+                }.getOrNull() ?: raw.take(300)
                 when {
                     resp.isSuccessful -> raw
                     resp.code == 401 -> throw HttpError(401, "PocketDock refuse le jeton (401). Recopiez-le depuis Moteur → API de contrôle.")
-                    resp.code == 503 -> throw HttpError(503, "Le moteur PocketDock est arrêté (503).")
-                    else -> throw HttpError(resp.code, "PocketDock ${resp.code} : ${raw.take(300)}")
+                    resp.code == 503 -> throw HttpError(503, "Le moteur PocketDock n'est pas démarré (503) : $apiError")
+                    else -> throw HttpError(resp.code, "PocketDock ${resp.code} : $apiError")
                 }
             }
         } catch (e: java.io.IOException) {
