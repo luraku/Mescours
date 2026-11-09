@@ -26,8 +26,10 @@ est renseignée, l'app bascule automatiquement sur Gemini.
 `mescours-apk`**). Les Actions doivent être actives sur le compte GitHub (*Settings → Billing*). Décompressez l'archive, copiez `app-debug.apk` sur le téléphone et ouvrez-la
 (autorisez l'installation depuis des sources inconnues).
 
-Pour garder les mises à jour installables par-dessus l'ancienne version, signez la release :
-créez une clé une fois (`keytool -genkeypair -v -keystore mescours.jks -alias mescours -keyalg RSA -keysize 2048 -validity 10000`)
+Les APK debug sont toutes signées avec la même clé (`android/app/debug.keystore`, versionnée) :
+chaque nouvelle version s'installe par-dessus la précédente en gardant cours et réglages.
+Cette clé étant publique, pour une diffusion au-delà de la famille, signez une release : créez
+une clé (`keytool -genkeypair -v -keystore mescours.jks -alias mescours -keyalg RSA -keysize 2048 -validity 10000`)
 puis ajoutez dans *Settings → Secrets → Actions* : `KEYSTORE_BASE64` (`base64 -w0 mescours.jks`),
 `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. L'artefact contiendra alors `app-release.apk`.
 

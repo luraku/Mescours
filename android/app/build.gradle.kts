@@ -21,6 +21,15 @@ android {
     // (secrets GitHub Actions). Sans elles, seule l'APK debug est produite.
     val keystorePath = System.getenv("MESCOURS_KEYSTORE")
     signingConfigs {
+        // Clé de debug fixe, versionnée : toutes les APK debug (CI comprise) ont la même
+        // signature, donc chaque nouvelle version s'installe par-dessus l'ancienne sans
+        // perdre les données. Clé publique : ne pas l'utiliser pour une diffusion large.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (keystorePath != null) {
             create("release") {
                 storeFile = file(keystorePath)
