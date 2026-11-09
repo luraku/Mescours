@@ -73,7 +73,7 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
     }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Text(
-                if (onNotebookLm) "Connecté à Google. Envoyez la connexion à la passerelle (bouton en bas)."
+                if (onNotebookLm) "Connecté à Google. Enregistrez la connexion (bouton en bas)."
                 else "Connectez-vous au compte Google qui possède vos carnets NotebookLM.",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -143,7 +143,7 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp),
             ) {
                 Icon(Icons.Default.CloudUpload, null)
-                Text("  Envoyer la connexion à la passerelle")
+                Text("  Enregistrer la connexion")
             }
             TextButton(onClick = { showPaste = true }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                 Text("La page ne s'affiche pas ? Coller des cookies exportés")

@@ -18,6 +18,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -84,8 +85,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -
                 }
             }
             Text(
-                "Les cours créés avec NotebookLM gardent leur carnet : leurs quiz et exercices sont générés par " +
-                    "NotebookLM tant que la passerelle répond, sinon par Gemini si une clé est renseignée.",
+                "Les cours créés avec NotebookLM gardent leur carnet : leurs quiz, exercices et résumés audio " +
+                    "sont générés par NotebookLM (intégré ou passerelle), sinon par Gemini si une clé est renseignée.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -97,6 +98,22 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -
                 visualTransformation = secretTransform, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(model, { model = it }, label = { Text("Modèle") }, singleLine = true,
                 modifier = Modifier.fillMaxWidth())
+
+            HorizontalDivider()
+            Text("NotebookLM intégré", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "L'app parle directement à votre NotebookLM, sans passerelle ni PocketDock. " +
+                    "Votre session Google est chiffrée sur ce téléphone. " +
+                    if (vm.hasEmbeddedSession()) "Session Google enregistrée." else "Aucune session Google enregistrée.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { vm.saveSettings(current()); onNotebookLmLogin() }) { Text("Connecter mon compte Google") }
+                OutlinedButton(onClick = { vm.testEmbedded() }, enabled = vm.hasEmbeddedSession()) { Text("Tester") }
+            }
+            if (vm.hasEmbeddedSession()) {
+                TextButton(onClick = { vm.disconnectEmbedded() }) { Text("Oublier la session Google", color = MaterialTheme.colorScheme.error) }
+            }
 
             HorizontalDivider()
             Text("PocketDock (Docker sur ce téléphone)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

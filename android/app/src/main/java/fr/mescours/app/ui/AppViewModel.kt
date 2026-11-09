@@ -9,7 +9,10 @@ import fr.mescours.app.data.EngineType
 import fr.mescours.app.data.LibraryRepository
 import fr.mescours.app.data.SettingsStore
 import fr.mescours.app.engine.BridgeBundle
+import fr.mescours.app.data.SecureSessionStore
+import fr.mescours.app.engine.EmbeddedNotebookLmEngine
 import fr.mescours.app.engine.EngineException
+import uniffi.nlm_core.NlmException
 import fr.mescours.app.engine.GoogleSession
 import fr.mescours.app.engine.PocketDockClient
 import fr.mescours.app.engine.GeminiEngine
@@ -125,18 +128,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- Moteurs ----------
 
+    private val sessionStore = SecureSessionStore(app)
+    private val embedded = EmbeddedNotebookLmEngine(sessionStore, app.cacheDir)
+
     private fun gemini(s: AppSettings = _settings.value) = GeminiEngine(s.geminiApiKey, s.geminiModel)
     private fun bridge(s: AppSettings = _settings.value) = NotebookLmBridgeEngine(s.bridgeUrl, s.bridgeToken)
 
-    private fun primaryEngine(): StudyEngine =
-        if (_settings.value.engine == EngineType.NOTEBOOKLM) bridge() else gemini()
+    private fun primaryEngine(): StudyEngine = when (_settings.value.engine) {
+        EngineType.GEMINI -> gemini()
+        EngineType.EMBEDDED -> embedded
+        EngineType.NOTEBOOKLM -> bridge()
+    }
 
-    /** NotebookLM pour les cours qui ont un carnet ; Gemini sinon. */
+    /** Cours avec carnet : NotebookLM (intégré ou passerelle) ; sinon Gemini. */
     private fun engineFor(course: Course): StudyEngine {
         val s = _settings.value
-        return if (course.notebookId != null && s.bridgeUrl.isNotBlank() &&
-            (s.engine == EngineType.NOTEBOOKLM || s.geminiApiKey.isBlank())
-        ) bridge(s) else gemini(s)
+        if (course.notebookId == null) return gemini(s)
+        return when {
+            s.engine == EngineType.EMBEDDED && embedded.hasSession() -> embedded
+            s.bridgeUrl.isNotBlank() && (s.engine == EngineType.NOTEBOOKLM || s.geminiApiKey.isBlank()) -> bridge(s)
+            embedded.hasSession() && s.geminiApiKey.isBlank() -> embedded
+            else -> gemini(s)
+        }
     }
 
     /**
@@ -147,6 +160,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         try {
             return block(primary)
         } catch (e: EngineException) {
+            // Moteur intégré : bascule sur Gemini seulement en cas de panne réseau.
+            if (primary is EmbeddedNotebookLmEngine) {
+                if (e.cause !is NlmException.Network || _settings.value.geminiApiKey.isBlank()) throw e
+                _message.value = "NotebookLM injoignable : bascule sur Gemini."
+                return block(gemini())
+            }
             if (primary !is NotebookLmBridgeEngine || e.cause !is java.io.IOException) throw e
             val restarted = canPilotLocalBridge() && runCatching { restartBridgeViaPocketDock() }.isSuccess
             if (restarted) {
@@ -290,6 +309,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ByteArray(24).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
 
     /** Diagnostic en trois temps : joignable (/ping), jeton accepté, session NotebookLM (/health). */
+    fun testEmbedded() = viewModelScope.launch {
+        _busy.value = "Test de NotebookLM intégré…"
+        _message.value = try {
+            "✓ NotebookLM intégré : " + embedded.accountStatus()
+        } catch (e: Exception) {
+            "✗ " + (e.message ?: "Erreur inconnue")
+        } finally {
+            _busy.value = null
+        }
+    }
+
+    fun disconnectEmbedded() {
+        sessionStore.clear()
+        embedded.reset()
+        _message.value = "Session Google supprimée du téléphone."
+    }
+
+    fun hasEmbeddedSession() = embedded.hasSession()
+
     fun testBridge(s: AppSettings) = viewModelScope.launch {
         _busy.value = "Test de la passerelle…"
         val engine = NotebookLmBridgeEngine(s.bridgeUrl, s.bridgeToken)
@@ -336,10 +374,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         sendGoogleSession(export.json, onSuccess).join()
     }
 
+    /**
+     * Enregistre la session Google : toujours sur le téléphone (moteur intégré, chiffrée),
+     * et aussi dans la passerelle si c'est le moteur choisi.
+     */
     fun sendGoogleSession(storageStateJson: String, onSuccess: () -> Unit) = viewModelScope.launch {
-        _busy.value = "Envoi de la connexion Google à la passerelle…"
+        _busy.value = "Enregistrement de la connexion Google…"
         try {
-            _message.value = "NotebookLM : " + bridge().importCookies(storageStateJson)
+            sessionStore.save(storageStateJson)
+            embedded.reset()
+            val s = _settings.value
+            _message.value = if (s.engine == EngineType.NOTEBOOKLM && s.bridgeUrl.isNotBlank()) {
+                "NotebookLM (passerelle) : " + bridge().importCookies(storageStateJson)
+            } else {
+                "NotebookLM intégré : " + embedded.accountStatus()
+            }
             onSuccess()
         } catch (e: Exception) {
             _message.value = e.message ?: "Erreur pendant l'envoi de la connexion"
@@ -358,7 +407,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 var usedEngine = ""
                 val structured = withFallback(primaryEngine()) { engine ->
-                    usedEngine = if (engine is NotebookLmBridgeEngine) "notebooklm" else "gemini"
+                    usedEngine = if (engine is NotebookLmBridgeEngine || engine is EmbeddedNotebookLmEngine) "notebooklm" else "gemini"
                     engine.structureCourse(pages, subject, child.grade)
                 }
                 val course = Course(
@@ -400,12 +449,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val audioPollers = mutableSetOf<String>()
 
     /** Le résumé audio n'existe que pour les cours qui ont un carnet NotebookLM. */
-    fun audioAvailable(course: Course) = course.notebookId != null && _settings.value.bridgeUrl.isNotBlank()
+    fun audioAvailable(course: Course) = course.notebookId != null &&
+        (embeddedAudio() || _settings.value.bridgeUrl.isNotBlank())
+
+    /** Audio par la bibliothèque intégrée si ce moteur est choisi (ou s'il n'y a pas de passerelle). */
+    private fun embeddedAudio() = embedded.hasSession() &&
+        (_settings.value.engine == EngineType.EMBEDDED || _settings.value.bridgeUrl.isBlank())
 
     fun generateAudio(course: Course, theme: Theme, short: Boolean) = viewModelScope.launch {
         val grade = childOf(course)?.grade ?: ""
         try {
-            val taskId = bridge().startAudio(course, theme, grade, short)
+            val taskId = if (embeddedAudio()) embedded.startAudio(course, theme, grade, short)
+            else bridge().startAudio(course, theme, grade, short)
             repo.updateTheme(course.id, theme.id) {
                 it.audioPath?.let { p -> File(p).delete() }
                 it.copy(audioTaskId = taskId, audioPath = null, audioError = null)
@@ -431,12 +486,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val course = library.value.courses.find { it.id == courseId } ?: return@launch
                     val theme = course.themes.find { it.id == themeId } ?: return@launch
                     val taskId = theme.audioTaskId ?: return@launch
-                    val (status, error) = runCatching { bridge().audioStatus(course, taskId) }
-                        .getOrElse { "pending" to null } // passerelle momentanément injoignable : on réessaie
+                    val viaEmbedded = embeddedAudio()
+                    // detail = URL du média (intégré, si prêt) ou message d'erreur.
+                    val (status, detail) = runCatching {
+                        if (viaEmbedded) embedded.audioState(course, taskId) else bridge().audioStatus(course, taskId)
+                    }.getOrElse { "pending" to null } // réseau ou passerelle momentanément indisponible : on réessaie
+                    val error = if (status == "failed") detail else null
                     when (status) {
                         "completed" -> {
                             val dest = File(getApplication<Application>().filesDir, "audio/$themeId.m4a")
-                            bridge().downloadAudio(course, taskId, dest)
+                            if (viaEmbedded) {
+                                embedded.downloadAudio(detail ?: throw EngineException("URL du résumé audio absente"), dest)
+                            } else {
+                                bridge().downloadAudio(course, taskId, dest)
+                            }
                             repo.updateTheme(courseId, themeId) { it.copy(audioPath = dest.path, audioTaskId = null) }
                             _message.value = "🎧 Le résumé audio « ${theme.title} » est prêt !"
                             return@launch

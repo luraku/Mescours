@@ -4,7 +4,8 @@ import android.content.Context
 
 enum class EngineType(val label: String) {
     GEMINI("Gemini API (Google AI Studio)"),
-    NOTEBOOKLM("NotebookLM (via la passerelle sur votre PC)"),
+    EMBEDDED("NotebookLM intégré (sans passerelle, expérimental)"),
+    NOTEBOOKLM("NotebookLM via la passerelle (PocketDock ou PC)"),
 }
 
 data class AppSettings(

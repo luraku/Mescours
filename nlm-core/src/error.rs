@@ -1,6 +1,7 @@
 //! Erreurs exposées à Kotlin (via UniFFI).
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
+#[uniffi(flat_error)]
 pub enum NlmError {
     /// Session Google absente, expirée ou refusée : il faut se reconnecter.
     #[error("Session Google expirée ou invalide : {message}")]
