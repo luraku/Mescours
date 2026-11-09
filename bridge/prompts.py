@@ -19,8 +19,9 @@ Format : {{"title": "titre court du cours", "themes": [{{"title": "", "summary":
 
 def quiz_instructions(subject: str, grade: str, theme: str) -> str:
     return (
-        f"Quiz en français pour un élève de {grade} en {subject}, "
-        f"uniquement sur le thème « {theme} ». Questions variées et adaptées à son niveau."
+        f"Écris tout le quiz EN FRANÇAIS (questions, réponses, explications, indices). "
+        f"Quiz pour un élève de {grade} en {subject}, uniquement sur le thème « {theme} ». "
+        f"Questions variées et adaptées à son niveau."
     )
 
 

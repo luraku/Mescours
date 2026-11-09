@@ -29,10 +29,15 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from notebooklm import NotebookLMClient
-from notebooklm.types import QuizDifficulty, QuizQuantity
+# Langue des contenus générés (quiz du Studio compris). À fixer avant d'importer notebooklm :
+# NOTEBOOKLM_HL est lu pour le paramètre `hl` de chaque appel.
+LANGUAGE = os.environ.get("MESCOURS_LANGUAGE", "fr").strip() or "fr"
+os.environ.setdefault("NOTEBOOKLM_HL", LANGUAGE)
 
-import prompts
+from notebooklm import NotebookLMClient  # noqa: E402
+from notebooklm.types import QuizDifficulty, QuizQuantity  # noqa: E402
+
+import prompts  # noqa: E402
 
 log = logging.getLogger("mescours.bridge")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -74,6 +79,25 @@ def require_token(authorization: str = Header(default="")) -> None:
 
 def client() -> NotebookLMClient:
     return NotebookLMClient.from_storage(profile=NOTEBOOKLM_PROFILE)
+
+
+_language_ok = False
+
+
+async def ensure_output_language(nlm: NotebookLMClient) -> None:
+    """Le générateur de quiz du Studio suit la « langue de sortie » du compte NotebookLM
+    (anglais par défaut), pas la consigne : on la règle sur LANGUAGE une fois par démarrage."""
+    global _language_ok
+    if _language_ok:
+        return
+    try:
+        current = await nlm.settings.get_output_language()
+        if (current or "").lower() != LANGUAGE.lower():
+            await nlm.settings.set_output_language(LANGUAGE)
+            log.info("Langue de sortie NotebookLM : %s → %s", current, LANGUAGE)
+        _language_ok = True
+    except Exception as e:  # ne bloque pas la génération
+        log.warning("Impossible de régler la langue de sortie NotebookLM (%s) : %s", LANGUAGE, e)
 
 
 # ---------------------------------------------------------------- utilitaires
@@ -216,6 +240,7 @@ async def create_course(
                 except Exception as e:  # le texte intégral est un bonus, pas un prérequis
                     log.warning("Texte intégral indisponible pour %s : %s", s.id, e)
 
+            await ensure_output_language(nlm)
             answer = await nlm.chat.ask(nb.id, prompts.structure(subject, grade))
             data = parse_json_answer(answer.answer)
 
@@ -233,6 +258,7 @@ async def create_course(
 @app.post("/courses/{notebook_id}/quiz")
 async def create_quiz(notebook_id: str, req: ThemeRequest, _: None = Depends(require_token)) -> dict[str, Any]:
     async with client() as nlm:
+        await ensure_output_language(nlm)
         # 1) Le générateur de quiz officiel du Studio NotebookLM.
         try:
             status = await nlm.artifacts.generate_quiz(

@@ -91,6 +91,7 @@ maison). N'exposez pas ce port directement sur Internet.
 | `BRIDGE_TOKEN` | Jeton exigé par la passerelle (`Authorization: Bearer …`) | aucun (déconseillé) |
 | `NOTEBOOKLM_PROFILE` | Profil `notebooklm-py` à utiliser (plusieurs comptes Google) | profil actif |
 | `MESCOURS_UPLOAD_AS_PDF` | `1` = regroupe les photos dans un seul PDF au lieu d'une source par photo | `0` |
+| `MESCOURS_LANGUAGE` | Langue des contenus générés ; règle aussi la « langue de sortie » du compte NotebookLM, que suit le générateur de quiz | `fr` |
 | `MESCOURS_GENERATION_TIMEOUT` | Attente max. de la génération d'un quiz (secondes) | `420` |
 
 La session Google expire de temps en temps : refaites « Connecter mon compte Google » dans l'app.
