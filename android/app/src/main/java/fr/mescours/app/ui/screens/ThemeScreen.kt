@@ -12,7 +12,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,6 +56,7 @@ fun ThemeScreen(
     onBack: () -> Unit,
     onQuiz: () -> Unit,
     onExercises: () -> Unit,
+    onOpenCourse: () -> Unit,
 ) {
     val library by vm.library.collectAsState()
     val course = library.courses.find { it.id == courseId }
@@ -65,7 +68,11 @@ fun ThemeScreen(
     val color = subjectColor(course.subject)
     LaunchedEffect(theme.audioTaskId) { vm.resumeAudio(course, theme) }
 
-    Scaffold(topBar = { BackTopBar(MathFormat.toPlainText(theme.title), onBack) }) { padding ->
+    Scaffold(topBar = {
+        BackTopBar(MathFormat.toPlainText(theme.title), onBack) {
+            IconButton(onClick = onOpenCourse) { Icon(Icons.Default.PhotoLibrary, "Photos et audio du cours") }
+        }
+    }) { padding ->
         LazyColumn(
             Modifier.padding(padding),
             contentPadding = PaddingValues(16.dp),

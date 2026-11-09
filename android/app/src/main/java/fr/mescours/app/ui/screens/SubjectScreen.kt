@@ -46,7 +46,13 @@ import java.util.Date
 
 /** Toutes les fiches d'une matière, regroupées par cours (du plus récent au plus ancien). */
 @Composable
-fun SubjectScreen(vm: AppViewModel, subject: String, onBack: () -> Unit, onOpenTheme: (String, String) -> Unit) {
+fun SubjectScreen(
+    vm: AppViewModel,
+    subject: String,
+    onBack: () -> Unit,
+    onOpenCourse: (String) -> Unit,
+    onOpenTheme: (String, String) -> Unit,
+) {
     val library by vm.library.collectAsState()
     val selectedId by vm.selectedChildId.collectAsState()
     val courses = library.courses
@@ -69,11 +75,12 @@ fun SubjectScreen(vm: AppViewModel, subject: String, onBack: () -> Unit, onOpenT
             courses.forEach { course ->
                 item(key = course.id) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(course.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Column(Modifier.weight(1f).clickable { onOpenCourse(course.id) }) {
+                            Text(course.title + "  ›", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
                                 DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(course.createdAt)) +
-                                    " · ${course.pagePaths.size} page(s) · " +
+                                    " · 📷 ${course.pagePaths.size}" +
+                                    course.themes.count { it.audioPath != null }.let { if (it > 0) " · 🎧 $it" else "" } + " · " +
                                     if (course.notebookId != null) "NotebookLM" else "Gemini",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,

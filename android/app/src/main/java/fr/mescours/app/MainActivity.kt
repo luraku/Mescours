@@ -46,6 +46,7 @@ import fr.mescours.app.model.Reward
 import fr.mescours.app.ui.AppViewModel
 import fr.mescours.app.ui.screens.AchievementsScreen
 import fr.mescours.app.ui.screens.CaptureScreen
+import fr.mescours.app.ui.screens.CourseScreen
 import fr.mescours.app.ui.screens.ExercisesScreen
 import fr.mescours.app.ui.screens.HomeScreen
 import fr.mescours.app.ui.screens.NotebookLmLoginScreen
@@ -104,16 +105,25 @@ private fun App(vm: AppViewModel) {
             composable("nlm-login") { NotebookLmLoginScreen(vm, onBack = { nav.popBackStack() }) }
             composable("subject/{subject}", listOf(navArgument("subject") { type = NavType.StringType })) { entry ->
                 val subject = entry.arguments?.getString("subject").orEmpty()
-                SubjectScreen(vm, subject, onBack = { nav.popBackStack() }) { courseId, themeId ->
+                SubjectScreen(
+                    vm, subject,
+                    onBack = { nav.popBackStack() },
+                    onOpenCourse = { nav.navigate("course/$it") },
+                ) { courseId, themeId ->
                     nav.navigate("theme/$courseId/$themeId")
                 }
+            }
+            composable("course/{courseId}") { entry ->
+                val c = entry.arguments?.getString("courseId").orEmpty()
+                CourseScreen(vm, c, onBack = { nav.popBackStack() }, onOpenTheme = { t -> nav.navigate("theme/$c/$t") })
             }
             composable("theme/{courseId}/{themeId}") { entry ->
                 val c = entry.arguments?.getString("courseId").orEmpty()
                 val t = entry.arguments?.getString("themeId").orEmpty()
                 ThemeScreen(vm, c, t, onBack = { nav.popBackStack() },
                     onQuiz = { nav.navigate("quiz/$c/$t") },
-                    onExercises = { nav.navigate("exercises/$c/$t") })
+                    onExercises = { nav.navigate("exercises/$c/$t") },
+                    onOpenCourse = { nav.navigate("course/$c") })
             }
             composable("quiz/{courseId}/{themeId}") { entry ->
                 QuizScreen(vm, entry.arguments?.getString("courseId").orEmpty(),
