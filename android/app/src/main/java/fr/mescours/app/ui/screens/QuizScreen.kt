@@ -1,6 +1,13 @@
 package fr.mescours.app.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -65,6 +72,10 @@ fun QuizScreen(vm: AppViewModel, courseId: String, themeId: String, onBack: () -
     var selected by rememberSaveable(quizKey) { mutableStateOf<Int?>(null) }
     var score by rememberSaveable(quizKey) { mutableIntStateOf(0) }
     var showHint by rememberSaveable(quizKey, index) { mutableStateOf(false) }
+    var attempt by rememberSaveable(quizKey) { mutableIntStateOf(0) }
+    // Les IA placent souvent la bonne réponse en premier : on mélange les propositions
+    // à chaque partie (l'ordre affiché change, la bonne réponse reste repérée par son index d'origine).
+    val orders = remember(quizKey, attempt) { quiz.map { it.options.indices.shuffled() } }
 
     Scaffold(topBar = {
         BackTopBar("Quiz · ${MathFormat.toPlainText(theme.title)}", onBack) {
@@ -100,17 +111,22 @@ fun QuizScreen(vm: AppViewModel, courseId: String, themeId: String, onBack: () -
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = { index = 0; score = 0; selected = null }, Modifier.fillMaxWidth()) { Text("Recommencer") }
+                    Button(onClick = { index = 0; score = 0; selected = null; attempt++ }, Modifier.fillMaxWidth()) { Text("Recommencer") }
                     OutlinedButton(onClick = { vm.generateQuiz(course, theme) }, Modifier.fillMaxWidth()) { Text("Nouvelles questions") }
                     TextButton(onClick = onBack, Modifier.fillMaxWidth()) { Text("Retour à la fiche") }
                 }
                 else -> {
                     val q = quiz[index]
-                    LinearProgressIndicator(progress = { index / quiz.size.toFloat() }, modifier = Modifier.fillMaxWidth())
+                    LinearProgressIndicator(
+                        progress = { (index + if (selected != null) 1 else 0) / quiz.size.toFloat() },
+                        modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(50)),
+                        drawStopIndicator = {},
+                    )
                     Text("Question ${index + 1} / ${quiz.size}", style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     MathText(q.question, style = MaterialTheme.typography.titleLarge)
-                    q.options.forEachIndexed { i, option ->
+                    orders.getOrElse(index) { q.options.indices.toList() }.forEachIndexed { position, i ->
+                        val option = q.options.getOrElse(i) { "" }
                         val answered = selected != null
                         val border = when {
                             answered && i == q.correctIndex -> Good
@@ -122,7 +138,7 @@ fun QuizScreen(vm: AppViewModel, courseId: String, themeId: String, onBack: () -
                                 selected = i
                                 if (i == q.correctIndex) score++
                             },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(18.dp),
                             border = BorderStroke(2.dp, border),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (answered && i == q.correctIndex) Good.copy(alpha = 0.12f)
@@ -130,8 +146,26 @@ fun QuizScreen(vm: AppViewModel, courseId: String, themeId: String, onBack: () -
                                 else MaterialTheme.colorScheme.surface,
                             ),
                         ) {
-                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("${'A' + i}  ", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(34.dp).background(
+                                        when {
+                                            answered && i == q.correctIndex -> Good
+                                            answered && i == selected -> Bad
+                                            else -> MaterialTheme.colorScheme.primaryContainer
+                                        },
+                                        CircleShape,
+                                    ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        if (answered && i == q.correctIndex) "✓" else if (answered && i == selected) "✗" else "${'A' + position}",
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (answered && (i == q.correctIndex || i == selected)) Color.White
+                                        else MaterialTheme.colorScheme.onPrimaryContainer,
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
                                 MathText(option, style = MaterialTheme.typography.bodyLarge)
                             }
                         }
@@ -144,7 +178,11 @@ fun QuizScreen(vm: AppViewModel, courseId: String, themeId: String, onBack: () -
                         Text(if (correct) "Bonne réponse !" else "Pas tout à fait…",
                             color = if (correct) Good else Bad, fontWeight = FontWeight.Bold)
                         if (q.explanation.isNotBlank()) MathText(q.explanation, style = MaterialTheme.typography.bodyMedium)
-                        Button(onClick = { index++; selected = null }, Modifier.fillMaxWidth()) {
+                        Button(onClick = {
+                            if (index + 1 == quiz.size) vm.recordQuiz(course, theme, score, quiz.size)
+                            index++
+                            selected = null
+                        }, Modifier.fillMaxWidth()) {
                             Text(if (index + 1 < quiz.size) "Question suivante" else "Voir mon score")
                         }
                     }

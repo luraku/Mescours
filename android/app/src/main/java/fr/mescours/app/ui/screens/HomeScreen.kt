@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -26,8 +27,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -55,7 +54,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.unit.sp
 import fr.mescours.app.model.Child
+import fr.mescours.app.model.ChildProgress
+import fr.mescours.app.model.Gamification
+import fr.mescours.app.ui.theme.BrandGradient
+import fr.mescours.app.ui.theme.gradientOf
+import fr.mescours.app.ui.theme.subjectEmoji
 import fr.mescours.app.model.GRADES
 import fr.mescours.app.ui.AppViewModel
 import fr.mescours.app.ui.theme.subjectColor
@@ -67,6 +77,7 @@ fun HomeScreen(
     onOpenSubject: (String) -> Unit,
     onCapture: () -> Unit,
     onSettings: () -> Unit,
+    onAchievements: () -> Unit,
 ) {
     val library by vm.library.collectAsState()
     val selectedId by vm.selectedChildId.collectAsState()
@@ -127,6 +138,14 @@ fun HomeScreen(
                 }
             }
 
+            if (child != null) {
+                ProgressHeader(
+                    child = child,
+                    progress = library.progress[child.id] ?: ChildProgress(),
+                    onClick = onAchievements,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
             when {
                 child == null -> EmptyState(
                     "Bienvenue !",
@@ -185,18 +204,87 @@ fun HomeScreen(
 @Composable
 private fun SubjectCard(subject: String, line1: String, line2: String, onClick: () -> Unit) {
     val color = subjectColor(subject)
-    Card(
-        Modifier.fillMaxWidth().height(130.dp).clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = color),
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(140.dp)
+            .shadow(6.dp, RoundedCornerShape(24.dp), ambientColor = color, spotColor = color)
+            .clip(RoundedCornerShape(24.dp))
+            .background(gradientOf(color))
+            .clickable(onClick = onClick),
     ) {
+        Text(
+            subjectEmoji(subject),
+            fontSize = 64.sp,
+            modifier = Modifier.align(Alignment.BottomEnd).offset(x = 10.dp, y = 12.dp).alpha(0.35f),
+        )
         Column(Modifier.padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-            Text(subject, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(subjectEmoji(subject) + "  " + subject, color = Color.White,
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
             Column {
-                Text(line1, color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodySmall)
-                Text(line2, color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodySmall)
+                Text(line1, color = Color.White.copy(alpha = 0.95f), style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium)
+                Text(line2, color = Color.White.copy(alpha = 0.95f), style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+}
+
+/** Carte de progression façon jeu : niveau, barre d'XP, série de jours et badges. */
+@Composable
+fun ProgressHeader(child: Child, progress: ChildProgress, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val level = Gamification.levelOf(progress.xp)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp))
+            .background(BrandGradient)
+            .clickable(onClick = onClick)
+            .padding(18.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(52.dp).background(Color.White.copy(alpha = 0.25f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) { Text(level.emoji, fontSize = 28.sp) }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Salut ${child.name} !", color = Color.White, style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold)
+                    Text("Niveau ${level.number} · ${level.title}", color = Color.White.copy(alpha = 0.9f),
+                        style = MaterialTheme.typography.bodyMedium)
+                }
+                StatPill("🔥", "${progress.streak}")
+            }
+            LinearProgressIndicator(
+                progress = { level.progress(progress.xp) },
+                modifier = Modifier.fillMaxWidth().height(10.dp).clip(CircleShape),
+                color = Color(0xFFFFD43B),
+                trackColor = Color.White.copy(alpha = 0.3f),
+                drawStopIndicator = {},
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${progress.xp} XP" + (level.nextXp?.let { " / $it" } ?: " · niveau max"),
+                    color = Color.White, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f),
+                )
+                Text("🏅 ${progress.badges.size}/${Gamification.BADGES.size} badges  ›", color = Color.White,
+                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun StatPill(emoji: String, value: String) {
+    Row(
+        Modifier.background(Color.White.copy(alpha = 0.25f), CircleShape).padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(emoji, fontSize = 18.sp)
+        Spacer(Modifier.width(4.dp))
+        Text(value, color = Color.White, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
     }
 }
 

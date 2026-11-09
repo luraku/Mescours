@@ -1,6 +1,8 @@
 package fr.mescours.app.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -52,6 +54,7 @@ fun SubjectScreen(vm: AppViewModel, subject: String, onBack: () -> Unit, onOpenT
         .sortedByDescending { it.createdAt }
     var toDelete by remember { mutableStateOf<Course?>(null) }
     val color = subjectColor(subject)
+    val bestScores = library.progress[selectedId]?.bestScores.orEmpty()
 
     Scaffold(topBar = { BackTopBar(subject, onBack) }) { padding ->
         if (courses.isEmpty()) {
@@ -82,11 +85,28 @@ fun SubjectScreen(vm: AppViewModel, subject: String, onBack: () -> Unit, onOpenT
                 items(course.themes, key = { course.id + it.id }) { theme ->
                     Card(
                         Modifier.fillMaxWidth().clickable { onOpenTheme(course.id, theme.id) },
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(22.dp),
                         colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.12f)),
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            MathText(theme.title, style = MaterialTheme.typography.titleMedium, color = color, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                MathText(theme.title, style = MaterialTheme.typography.titleMedium, color = color,
+                                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                val best = bestScores[theme.id]
+                                Text(
+                                    when {
+                                        best == null -> "✨ Nouveau"
+                                        best >= 80 -> "⭐ $best %"
+                                        else -> "📈 $best %"
+                                    },
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier
+                                        .background(if (best != null && best >= 80) Color(0xFFF59F00) else color, RoundedCornerShape(50))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                )
+                            }
                             Spacer(Modifier.padding(2.dp))
                             MathText(theme.summary, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                             Row(Modifier.padding(top = 8.dp)) {

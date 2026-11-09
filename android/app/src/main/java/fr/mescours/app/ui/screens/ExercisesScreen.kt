@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import fr.mescours.app.model.Exercise
+import fr.mescours.app.model.Gamification
 import fr.mescours.app.ui.AppViewModel
 import fr.mescours.app.ui.MathText
 import fr.mescours.app.util.MathFormat
@@ -69,13 +70,17 @@ fun ExercisesScreen(vm: AppViewModel, courseId: String, themeId: String, onBack:
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            itemsIndexed(theme.exercises, key = { i, e -> "$i-${e.statement.hashCode()}" }) { i, ex -> ExerciseCard(i + 1, ex) }
+            val done = library.progress[course.childId]?.exercisesDone.orEmpty()
+            itemsIndexed(theme.exercises, key = { i, e -> "$i-${e.statement.hashCode()}" }) { i, ex ->
+                val key = "${theme.id}:$i:${ex.statement.hashCode()}"
+                ExerciseCard(i + 1, ex, solved = key in done, onSolved = { vm.recordExercise(course, key) })
+            }
         }
     }
 }
 
 @Composable
-private fun ExerciseCard(number: Int, ex: Exercise) {
+private fun ExerciseCard(number: Int, ex: Exercise, solved: Boolean, onSolved: () -> Unit) {
     var showHint by rememberSaveable(ex.statement) { mutableStateOf(false) }
     var showSolution by rememberSaveable(ex.statement) { mutableStateOf(false) }
     Card(shape = RoundedCornerShape(16.dp)) {
@@ -95,6 +100,13 @@ private fun ExerciseCard(number: Int, ex: Exercise) {
                 HorizontalDivider()
                 Text("Correction", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
                 MathText(ex.solution, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (solved) {
+                Text("✅ Réussi !", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+            } else if (showSolution) {
+                Button(onClick = onSolved, modifier = Modifier.fillMaxWidth()) {
+                    Text("J'ai réussi cet exercice  +${Gamification.XP_EXERCISE} XP")
+                }
             }
         }
     }

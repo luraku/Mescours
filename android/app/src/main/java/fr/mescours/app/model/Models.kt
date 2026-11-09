@@ -65,6 +65,8 @@ data class Exercise(
 data class Library(
     val children: List<Child> = emptyList(),
     val courses: List<Course> = emptyList(),
+    /** Progression (XP, badges…) par identifiant d'enfant. */
+    val progress: Map<String, ChildProgress> = emptyMap(),
 )
 
 /** Résultat de l'analyse d'un cours, commun aux deux moteurs. */

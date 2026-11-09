@@ -32,7 +32,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import fr.mescours.app.model.Reward
 import fr.mescours.app.ui.AppViewModel
+import fr.mescours.app.ui.screens.AchievementsScreen
 import fr.mescours.app.ui.screens.CaptureScreen
 import fr.mescours.app.ui.screens.ExercisesScreen
 import fr.mescours.app.ui.screens.HomeScreen
@@ -58,6 +70,7 @@ private fun App(vm: AppViewModel) {
     val nav = rememberNavController()
     val busy by vm.busy.collectAsState()
     val message by vm.message.collectAsState()
+    val reward by vm.reward.collectAsState()
     val snackbar = remember { SnackbarHostState() }
 
     // On efface le message seulement après l'avoir affiché : l'effacer avant relançait
@@ -76,6 +89,7 @@ private fun App(vm: AppViewModel) {
                     onOpenSubject = { nav.navigate("subject/${Uri.encode(it)}") },
                     onCapture = { nav.navigate("capture") },
                     onSettings = { nav.navigate("settings") },
+                    onAchievements = { nav.navigate("achievements") },
                 )
             }
             composable("capture") {
@@ -86,6 +100,7 @@ private fun App(vm: AppViewModel) {
             composable("settings") {
                 SettingsScreen(vm, onBack = { nav.popBackStack() }, onNotebookLmLogin = { nav.navigate("nlm-login") })
             }
+            composable("achievements") { AchievementsScreen(vm, onBack = { nav.popBackStack() }) }
             composable("nlm-login") { NotebookLmLoginScreen(vm, onBack = { nav.popBackStack() }) }
             composable("subject/{subject}", listOf(navArgument("subject") { type = NavType.StringType })) { entry ->
                 val subject = entry.arguments?.getString("subject").orEmpty()
@@ -112,6 +127,10 @@ private fun App(vm: AppViewModel) {
 
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
 
+        reward?.let { r ->
+            if (busy == null) RewardDialog(r, onDismiss = vm::consumeReward)
+        }
+
         busy?.let { text ->
             AlertDialog(
                 onDismissRequest = {},
@@ -127,4 +146,57 @@ private fun App(vm: AppViewModel) {
             )
         }
     }
+}
+
+/** Fenêtre de récompense : XP gagnée, série de jours, passage de niveau et nouveaux badges. */
+@Composable
+private fun RewardDialog(r: Reward, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { Button(onClick = onDismiss) { Text("Super !") } },
+        title = {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(if (r.newBadges.isNotEmpty() || r.levelUp != null) "🎉" else "👏", fontSize = 48.sp)
+                Text(r.headline, textAlign = TextAlign.Center, fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        text = {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "+${r.xp} XP",
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                if (r.streakIncreased && r.streak > 1) {
+                    Text("🔥 ${r.streak} jours d'affilée !", fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 6.dp))
+                }
+                r.levelUp?.let {
+                    Text("${it.emoji} Niveau ${it.number} : ${it.title} !", fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 6.dp))
+                }
+                if (r.newBadges.isNotEmpty()) {
+                    Text(
+                        if (r.newBadges.size == 1) "Nouveau badge" else "Nouveaux badges",
+                        style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp),
+                    )
+                    r.newBadges.forEach { b ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 6.dp)
+                                .background(Color(0xFFFFF4D6), RoundedCornerShape(16.dp)).padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(b.emoji, fontSize = 28.sp)
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(b.title, fontWeight = FontWeight.Bold, color = Color(0xFF3B2F00))
+                                Text(b.description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF5C4A00))
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
 }

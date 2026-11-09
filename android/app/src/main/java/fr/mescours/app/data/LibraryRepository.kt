@@ -2,6 +2,7 @@ package fr.mescours.app.data
 
 import android.content.Context
 import fr.mescours.app.model.Child
+import fr.mescours.app.model.ChildProgress
 import fr.mescours.app.model.Course
 import fr.mescours.app.model.Library
 import fr.mescours.app.model.Theme
@@ -43,7 +44,20 @@ class LibraryRepository(context: Context) {
         lib.copy(
             children = lib.children.filterNot { it.id == childId },
             courses = lib.courses.filterNot { it.childId == childId },
+            progress = lib.progress - childId,
         )
+    }
+
+    /** Met à jour la progression d'un enfant et renvoie le résultat de [transform]. */
+    suspend fun <R> updateProgress(childId: String, transform: (ChildProgress, Library) -> Pair<ChildProgress, R>): R {
+        var result: R? = null
+        update { lib ->
+            val (next, r) = transform(lib.progress[childId] ?: ChildProgress(), lib)
+            result = r
+            lib.copy(progress = lib.progress + (childId to next))
+        }
+        @Suppress("UNCHECKED_CAST")
+        return result as R
     }
 
     suspend fun addCourse(course: Course) = update { it.copy(courses = it.courses + course) }

@@ -17,6 +17,9 @@ import fr.mescours.app.engine.NotebookLmBridgeEngine
 import fr.mescours.app.engine.StudyEngine
 import fr.mescours.app.model.Child
 import fr.mescours.app.model.Course
+import fr.mescours.app.model.Gamification
+import fr.mescours.app.model.ProgressEvent
+import fr.mescours.app.model.Reward
 import fr.mescours.app.model.Theme
 import fr.mescours.app.model.newId
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.time.LocalDate
 import java.security.SecureRandom
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -50,6 +54,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val message: StateFlow<String?> = _message.asStateFlow()
 
     fun consumeMessage() { _message.value = null }
+
+    // ---------- Gamification ----------
+
+    /** Récompense à afficher (XP gagnée, badges, niveau), null = rien. */
+    private val _reward = MutableStateFlow<Reward?>(null)
+    val reward: StateFlow<Reward?> = _reward.asStateFlow()
+
+    fun consumeReward() { _reward.value = null }
+
+    private suspend fun recordProgress(childId: String, event: ProgressEvent, showReward: Boolean = true) {
+        val reward = repo.updateProgress(childId) { p, lib ->
+            val subjects = lib.courses.filter { it.childId == childId }.map { it.subject }.distinct().size
+            Gamification.apply(p, event, subjects, LocalDate.now().toEpochDay())
+        }
+        val name = library.value.children.find { it.id == childId }?.name.orEmpty()
+        if (reward != null && showReward) _reward.value = reward.copy(childName = name)
+    }
+
+    fun recordQuiz(course: Course, theme: Theme, correct: Int, total: Int) = viewModelScope.launch {
+        recordProgress(course.childId, ProgressEvent.QuizFinished(theme.id, correct, total))
+    }
+
+    fun recordExercise(course: Course, key: String) = viewModelScope.launch {
+        recordProgress(course.childId, ProgressEvent.ExerciseDone(key))
+    }
 
     fun selectChild(id: String) { _selectedChildId.value = id }
 
@@ -343,6 +372,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     engine = usedEngine,
                 )
                 repo.addCourse(course)
+                recordProgress(child.id, ProgressEvent.CourseAdded)
                 onDone(course)
             } catch (e: Exception) {
                 _message.value = e.message ?: "Erreur pendant l'analyse"

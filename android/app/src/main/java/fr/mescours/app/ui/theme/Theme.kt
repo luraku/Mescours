@@ -5,7 +5,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Shapes
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.dp
 
 private val Violet = Color(0xFF5B4CF0)
 private val Jaune = Color(0xFFFFC94D)
@@ -29,9 +34,46 @@ private val Dark = darkColorScheme(
     tertiary = Jaune,
 )
 
+private val RoundShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(32.dp),
+)
+
 @Composable
 fun MescoursTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) Dark else Light, content = content)
+    MaterialTheme(
+        colorScheme = if (isSystemInDarkTheme()) Dark else Light,
+        shapes = RoundShapes,
+        content = content,
+    )
+}
+
+/** Dégradé vif d'une couleur vers une teinte voisine, pour les cartes et en-têtes. */
+fun gradientOf(color: Color): Brush = Brush.linearGradient(
+    listOf(color, lerp(color, Color(0xFFFF7AC6), 0.35f)),
+)
+
+/** Dégradé principal de l'app (violet → rose). */
+val BrandGradient: Brush = Brush.linearGradient(listOf(Color(0xFF5B4CF0), Color(0xFF9B5CF6), Color(0xFFEC6FB0)))
+
+/** Un emoji par matière pour des cartes plus parlantes. */
+fun subjectEmoji(subject: String): String = when (subject.lowercase()) {
+    "mathématiques", "maths" -> "🔢"
+    "français" -> "📖"
+    "histoire-géographie", "histoire", "géographie" -> "🌍"
+    "svt" -> "🌱"
+    "sciences" -> "🔬"
+    "physique-chimie" -> "⚗️"
+    "anglais" -> "🇬🇧"
+    "espagnol" -> "🇪🇸"
+    "allemand" -> "🇩🇪"
+    "technologie" -> "⚙️"
+    "emc" -> "⚖️"
+    "philosophie" -> "💭"
+    else -> "📚"
 }
 
 /** Une couleur par matière, façon cartes de révision. */
