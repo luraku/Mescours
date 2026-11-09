@@ -45,3 +45,12 @@ uniquement sur le thème « {theme} » de ce cours, avec une correction détaill
 {_MATH}
 {_JSON_ONLY}
 Format : {{"exercises": [{{"statement": "", "hint": "", "solution": "", "difficulty": "facile|moyen|difficile"}}]}}"""
+
+
+def audio_instructions(subject: str, grade: str, theme: str) -> str:
+    focus = f", centré sur le thème « {theme} »" if theme else ""
+    return (
+        f"Résumé audio EN FRANÇAIS pour un élève de {grade} en {subject}{focus}. "
+        "Ton chaleureux et encourageant, phrases simples, exemples concrets du cours, "
+        "et récapitulatif des points essentiels à retenir à la fin."
+    )

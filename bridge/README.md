@@ -106,3 +106,6 @@ La session Google expire de temps en temps : refaites « Connecter mon compte Go
 | POST | `/courses` | multipart : `subject`, `grade`, `files[]` (JPEG) | `{"title","transcript","themes","notebookId"}` |
 | POST | `/courses/{notebookId}/quiz` | `{"subject","grade","theme","count"}` | `{"questions":[{"question","options","correctIndex","explanation","hint"}]}` |
 | POST | `/courses/{notebookId}/exercises` | idem | `{"exercises":[{"statement","hint","solution","difficulty"}]}` |
+| POST | `/courses/{notebookId}/audio` | `{"subject","grade","theme","length":"short"\|"default"}` | `{"taskId","status":"pending"}` (résumé audio NotebookLM) |
+| GET | `/courses/{notebookId}/audio/{taskId}` | – | `{"status":"pending"\|"completed"\|"failed","error"?}` ; télécharge le fichier une fois prêt |
+| GET | `/courses/{notebookId}/audio/{taskId}/file` | – | fichier `audio/mp4` (.m4a) |

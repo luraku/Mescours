@@ -395,6 +395,70 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---------- Résumé audio (NotebookLM) ----------
+
+    private val audioPollers = mutableSetOf<String>()
+
+    /** Le résumé audio n'existe que pour les cours qui ont un carnet NotebookLM. */
+    fun audioAvailable(course: Course) = course.notebookId != null && _settings.value.bridgeUrl.isNotBlank()
+
+    fun generateAudio(course: Course, theme: Theme, short: Boolean) = viewModelScope.launch {
+        val grade = childOf(course)?.grade ?: ""
+        try {
+            val taskId = bridge().startAudio(course, theme, grade, short)
+            repo.updateTheme(course.id, theme.id) {
+                it.audioPath?.let { p -> File(p).delete() }
+                it.copy(audioTaskId = taskId, audioPath = null, audioError = null)
+            }
+            _message.value = "Résumé audio lancé : NotebookLM le prépare (souvent 5 à 10 minutes)."
+            pollAudio(course.id, theme.id)
+        } catch (e: Exception) {
+            _message.value = e.message ?: "Impossible de lancer le résumé audio"
+        }
+    }
+
+    /** Reprend le suivi d'une génération en cours (appelé à l'ouverture de la fiche). */
+    fun resumeAudio(course: Course, theme: Theme) {
+        if (theme.audioTaskId != null && theme.audioPath == null) pollAudio(course.id, theme.id)
+    }
+
+    private fun pollAudio(courseId: String, themeId: String) {
+        if (!audioPollers.add(themeId)) return
+        viewModelScope.launch {
+            try {
+                val deadline = System.currentTimeMillis() + 40 * 60_000
+                while (System.currentTimeMillis() < deadline) {
+                    val course = library.value.courses.find { it.id == courseId } ?: return@launch
+                    val theme = course.themes.find { it.id == themeId } ?: return@launch
+                    val taskId = theme.audioTaskId ?: return@launch
+                    val (status, error) = runCatching { bridge().audioStatus(course, taskId) }
+                        .getOrElse { "pending" to null } // passerelle momentanément injoignable : on réessaie
+                    when (status) {
+                        "completed" -> {
+                            val dest = File(getApplication<Application>().filesDir, "audio/$themeId.m4a")
+                            bridge().downloadAudio(course, taskId, dest)
+                            repo.updateTheme(courseId, themeId) { it.copy(audioPath = dest.path, audioTaskId = null) }
+                            _message.value = "🎧 Le résumé audio « ${theme.title} » est prêt !"
+                            return@launch
+                        }
+                        "failed" -> {
+                            repo.updateTheme(courseId, themeId) {
+                                it.copy(audioTaskId = null, audioError = error ?: "génération échouée")
+                            }
+                            _message.value = "Le résumé audio a échoué : ${error ?: "erreur NotebookLM"}"
+                            return@launch
+                        }
+                    }
+                    delay(15_000)
+                }
+            } catch (e: Exception) {
+                _message.value = e.message ?: "Erreur pendant le résumé audio"
+            } finally {
+                audioPollers.remove(themeId)
+            }
+        }
+    }
+
     fun generateExercises(course: Course, theme: Theme, count: Int = 5) = viewModelScope.launch {
         val grade = childOf(course)?.grade ?: ""
         _busy.value = "Création des exercices « ${theme.title} »…"

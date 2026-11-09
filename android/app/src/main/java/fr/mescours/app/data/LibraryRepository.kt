@@ -63,7 +63,10 @@ class LibraryRepository(context: Context) {
     suspend fun addCourse(course: Course) = update { it.copy(courses = it.courses + course) }
 
     suspend fun deleteCourse(courseId: String) = update { lib ->
-        lib.courses.find { it.id == courseId }?.pagePaths?.forEach { File(it).delete() }
+        lib.courses.find { it.id == courseId }?.let { c ->
+            c.pagePaths.forEach { File(it).delete() }
+            c.themes.mapNotNull { it.audioPath }.forEach { File(it).delete() }
+        }
         lib.copy(courses = lib.courses.filterNot { it.id == courseId })
     }
 

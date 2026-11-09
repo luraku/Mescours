@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 # Langue des contenus générés (quiz du Studio compris). À fixer avant d'importer notebooklm :
@@ -35,7 +35,7 @@ LANGUAGE = os.environ.get("MESCOURS_LANGUAGE", "fr").strip() or "fr"
 os.environ.setdefault("NOTEBOOKLM_HL", LANGUAGE)
 
 from notebooklm import NotebookLMClient  # noqa: E402
-from notebooklm.types import QuizDifficulty, QuizQuantity  # noqa: E402
+from notebooklm.types import AudioFormat, AudioLength, QuizDifficulty, QuizQuantity  # noqa: E402
 
 import prompts  # noqa: E402
 
@@ -49,6 +49,8 @@ NOTEBOOKLM_PROFILE = os.environ.get("NOTEBOOKLM_PROFILE") or None
 UPLOAD_AS_PDF = os.environ.get("MESCOURS_UPLOAD_AS_PDF", "0") == "1"
 GENERATION_TIMEOUT = float(os.environ.get("MESCOURS_GENERATION_TIMEOUT", "420"))
 MAX_PAGES = 20
+# Résumés audio téléchargés (dans le volume /data pour survivre aux redémarrages).
+AUDIO_DIR = Path(os.environ.get("NOTEBOOKLM_HOME", str(Path.home() / ".notebooklm"))) / "mescours-audio"
 DEBUG = os.environ.get("MESCOURS_DEBUG", "0") == "1"
 
 app = FastAPI(title="Mes Cours – passerelle NotebookLM", version="0.1.0")
@@ -292,3 +294,70 @@ async def create_exercises(notebook_id: str, req: ThemeRequest, _: None = Depend
     async with client() as nlm:
         answer = await nlm.chat.ask(notebook_id, prompts.exercises_json(req.subject, req.grade, req.theme, req.count))
     return {"exercises": parse_json_answer(answer.answer).get("exercises", [])}
+
+
+# ---------------------------------------------------------------- résumé audio
+
+
+class AudioRequest(BaseModel):
+    subject: str
+    grade: str = ""
+    theme: str = ""
+    # "short" : résumé bref ; "default" : discussion plus approfondie.
+    length: str = "short"
+
+
+_TASK_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def _audio_path(task_id: str) -> Path:
+    if not _TASK_ID.match(task_id):
+        raise HTTPException(status_code=400, detail="Identifiant de tâche invalide.")
+    return AUDIO_DIR / f"{task_id}.m4a"
+
+
+@app.post("/courses/{notebook_id}/audio")
+async def start_audio(notebook_id: str, req: AudioRequest, _: None = Depends(require_token)) -> dict[str, Any]:
+    """Lance un « Résumé audio » NotebookLM (podcast) ; à suivre avec GET …/audio/{taskId}."""
+    short = req.length != "default"
+    async with client() as nlm:
+        await ensure_output_language(nlm)
+        status = await nlm.artifacts.generate_audio(
+            notebook_id,
+            language=LANGUAGE,
+            instructions=prompts.audio_instructions(req.subject, req.grade, req.theme),
+            audio_format=AudioFormat.BRIEF if short else AudioFormat.DEEP_DIVE,
+            audio_length=AudioLength.SHORT if short else AudioLength.DEFAULT,
+        )
+    if status.is_failed:
+        raise HTTPException(status_code=502, detail=f"NotebookLM refuse le résumé audio : {status.error or status.status}")
+    log.info("Résumé audio lancé : carnet %s, tâche %s", notebook_id, status.task_id)
+    return {"taskId": status.task_id, "status": "pending"}
+
+
+@app.get("/courses/{notebook_id}/audio/{task_id}")
+async def audio_status(notebook_id: str, task_id: str, _: None = Depends(require_token)) -> dict[str, Any]:
+    """État du résumé audio : pending, completed (fichier prêt) ou failed."""
+    path = _audio_path(task_id)
+    if path.exists():
+        return {"status": "completed", "bytes": path.stat().st_size}
+    async with client() as nlm:
+        st = await nlm.artifacts.poll_status(notebook_id, task_id)
+        if st.is_failed:
+            return {"status": "failed", "error": st.error or "génération échouée"}
+        if not st.is_complete:
+            return {"status": "pending"}
+        AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".part")
+        await nlm.artifacts.download_audio(notebook_id, str(tmp), artifact_id=task_id)
+        tmp.replace(path)
+    log.info("Résumé audio prêt : %s (%d octets)", path.name, path.stat().st_size)
+    return {"status": "completed", "bytes": path.stat().st_size}
+
+
+@app.get("/courses/{notebook_id}/audio/{task_id}/file")
+async def audio_file(notebook_id: str, task_id: str, _: None = Depends(require_token)) -> FileResponse:
+    path = _audio_path(task_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Résumé audio pas encore prêt.")
+    return FileResponse(path, media_type="audio/mp4", filename=f"resume-{task_id}.m4a")

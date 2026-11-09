@@ -91,6 +91,41 @@ class NotebookLmBridgeEngine(baseUrl: String, private val token: String) : Study
             lenientJson.decodeFromString(ExercisesPayload.serializer(), raw).exercises
         }
 
+    // ------------------------------------------------------------ résumé audio
+
+    /** Lance la génération ; renvoie l'identifiant de tâche NotebookLM. */
+    suspend fun startAudio(course: Course, theme: Theme, grade: String, short: Boolean): String =
+        withContext(Dispatchers.IO) {
+            val body = buildJsonObject {
+                put("subject", course.subject)
+                put("grade", grade)
+                put("theme", theme.title)
+                put("length", if (short) "short" else "default")
+            }.toString().toRequestBody("application/json".toMediaType())
+            val raw = call(Request.Builder().url("$base/courses/${notebookOf(course)}/audio").post(body))
+            lenientJson.parseToJsonElement(raw).jsonObject["taskId"]?.jsonPrimitive?.content
+                ?: throw EngineException("La passerelle n'a pas renvoyé de tâche audio.")
+        }
+
+    /** « pending », « completed » ou « failed » (avec message). */
+    suspend fun audioStatus(course: Course, taskId: String): Pair<String, String?> = withContext(Dispatchers.IO) {
+        val raw = call(Request.Builder().url("$base/courses/${notebookOf(course)}/audio/$taskId").get())
+        val obj = lenientJson.parseToJsonElement(raw).jsonObject
+        (obj["status"]?.jsonPrimitive?.content ?: "pending") to obj["error"]?.jsonPrimitive?.content
+    }
+
+    suspend fun downloadAudio(course: Course, taskId: String, dest: File) = withContext(Dispatchers.IO) {
+        val builder = Request.Builder().url("$base/courses/${notebookOf(course)}/audio/$taskId/file").get()
+        if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
+        http.newCall(builder.build()).execute().use { resp ->
+            if (!resp.isSuccessful) throw EngineException("Téléchargement du résumé audio impossible (${resp.code}).")
+            dest.parentFile?.mkdirs()
+            val tmp = File(dest.path + ".part")
+            resp.body!!.byteStream().use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            tmp.renameTo(dest)
+        }
+    }
+
     private fun notebookOf(course: Course) = course.notebookId
         ?: throw EngineException("Ce cours n'a pas de carnet NotebookLM.")
 

@@ -39,6 +39,10 @@ data class Theme(
     val examples: List<String> = emptyList(),
     val quiz: List<QuizQuestion> = emptyList(),
     val exercises: List<Exercise> = emptyList(),
+    /** Résumé audio NotebookLM : tâche en cours, fichier local une fois téléchargé, dernière erreur. */
+    val audioTaskId: String? = null,
+    val audioPath: String? = null,
+    val audioError: String? = null,
 )
 
 @Serializable

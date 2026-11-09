@@ -22,6 +22,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import java.io.File
+import fr.mescours.app.ui.AudioPlayer
+import fr.mescours.app.model.Theme
+import fr.mescours.app.model.Course
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,6 +63,7 @@ fun ThemeScreen(
         return
     }
     val color = subjectColor(course.subject)
+    LaunchedEffect(theme.audioTaskId) { vm.resumeAudio(course, theme) }
 
     Scaffold(topBar = { BackTopBar(MathFormat.toPlainText(theme.title), onBack) }) { padding ->
         LazyColumn(
@@ -89,6 +101,7 @@ fun ThemeScreen(
                     }
                 }
             }
+            item { AudioCard(vm, course, theme, color) }
             if (theme.keyPoints.isNotEmpty()) {
                 item { SectionTitle("À retenir") }
                 items(theme.keyPoints) { p ->
@@ -120,4 +133,56 @@ fun ThemeScreen(
 @Composable
 fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+}
+
+/** Résumé audio NotebookLM (podcast) du thème : génération, suivi et lecture. */
+@Composable
+private fun AudioCard(vm: AppViewModel, course: Course, theme: Theme, color: Color) {
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.10f)),
+    ) {
+        Column(Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("🎧 Résumé audio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color)
+            val ready = theme.audioPath?.let { File(it).exists() } == true
+            when {
+                !vm.audioAvailable(course) -> Text(
+                    "Disponible pour les cours créés avec le moteur NotebookLM.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ready -> {
+                    AudioPlayer(theme.audioPath!!, color)
+                    TextButton(onClick = { vm.generateAudio(course, theme, short = true) }) { Text("Régénérer") }
+                }
+                theme.audioTaskId != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = color)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        "NotebookLM prépare le résumé (5 à 10 minutes). Tu peux continuer à réviser : " +
+                            "un message s'affichera quand il sera prêt (si l'app a été fermée, reviens sur cette fiche).",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                else -> {
+                    Text(
+                        "Écoute le cours expliqué à l'oral, pour réviser en marchant ou avant de dormir.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    theme.audioError?.let {
+                        Text("Dernier essai : $it", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { vm.generateAudio(course, theme, short = true) }, modifier = Modifier.weight(1f)) {
+                            Text("Court")
+                        }
+                        OutlinedButton(onClick = { vm.generateAudio(course, theme, short = false) }, modifier = Modifier.weight(1f)) {
+                            Text("Détaillé")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
