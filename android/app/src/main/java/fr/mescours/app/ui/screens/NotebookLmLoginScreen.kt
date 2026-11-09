@@ -42,7 +42,9 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-private const val NOTEBOOKLM_URL = "https://notebooklm.google.com/"
+private const val NOTEBOOKLM_URL = "https://notebook.google.com/"
+/** NotebookLM a changé d'adresse (notebooklm.google.com → notebook.google.com) : on accepte les deux. */
+private val NOTEBOOK_HOSTS = setOf("notebook.google.com", "notebooklm.google.com")
 /** Ouvre directement le formulaire de connexion Google, puis revient sur NotebookLM. */
 private val LOGIN_URL = "https://accounts.google.com/ServiceLogin?continue=" + Uri.encode(NOTEBOOKLM_URL)
 
@@ -59,7 +61,9 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
     var progress by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var showPaste by remember { mutableStateOf(false) }
-    val onNotebookLm = Uri.parse(currentUrl.ifBlank { "about:blank" }).host == "notebooklm.google.com"
+    // Prêt dès que l'on est sur NotebookLM, ou dès que la session Google existe (cookie SID).
+    val onNotebookLm = Uri.parse(currentUrl.ifBlank { "about:blank" }).host in NOTEBOOK_HOSTS ||
+        (currentUrl.isNotBlank() && isSignedInToGoogle())
 
     Scaffold(topBar = {
         BackTopBar("Connexion NotebookLM", onBack) {
@@ -71,7 +75,7 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
     }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Text(
-                if (onNotebookLm) "Connecté à NotebookLM. Envoyez la connexion à la passerelle."
+                if (onNotebookLm) "Connecté à Google. Envoyez la connexion à la passerelle (bouton en bas)."
                 else "Connectez-vous au compte Google qui possède vos carnets NotebookLM.",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -196,7 +200,7 @@ private fun collectGoogleCookies(): String {
     val shared = read("https://www.google.com/")
     val cookies = buildList {
         shared.forEach { (n, v) -> add(cookie(n, v, ".google.com")) }
-        listOf("notebooklm.google.com", "accounts.google.com").forEach { host ->
+        listOf("notebook.google.com", "notebooklm.google.com", "accounts.google.com").forEach { host ->
             read("https://$host/").forEach { (n, v) -> if (shared[n] != v) add(cookie(n, v, host)) }
         }
     }
@@ -205,6 +209,10 @@ private fun collectGoogleCookies(): String {
         put("origins", JsonArray(emptyList()))
     }.toString()
 }
+
+private fun isSignedInToGoogle(): Boolean =
+    CookieManager.getInstance().getCookie("https://www.google.com/").orEmpty()
+        .split(";").any { it.trim().startsWith("SID=") }
 
 private fun cookie(name: String, value: String, domain: String) = buildJsonObject {
     put("name", name)
