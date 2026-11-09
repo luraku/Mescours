@@ -3,16 +3,26 @@ package fr.mescours.app.ui.screens
 import android.annotation.SuppressLint
 import android.net.Uri
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,6 +43,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 private const val NOTEBOOKLM_URL = "https://notebooklm.google.com/"
+/** Ouvre directement le formulaire de connexion Google, puis revient sur NotebookLM. */
+private val LOGIN_URL = "https://accounts.google.com/ServiceLogin?continue=" + Uri.encode(NOTEBOOKLM_URL)
 
 /**
  * Connexion à NotebookLM *dans l'app* : l'utilisateur se connecte à son compte Google
@@ -43,12 +56,16 @@ private const val NOTEBOOKLM_URL = "https://notebooklm.google.com/"
 fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
     var currentUrl by remember { mutableStateOf("") }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var progress by remember { mutableIntStateOf(0) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var showPaste by remember { mutableStateOf(false) }
     val onNotebookLm = Uri.parse(currentUrl.ifBlank { "about:blank" }).host == "notebooklm.google.com"
 
     Scaffold(topBar = {
         BackTopBar("Connexion NotebookLM", onBack) {
+            IconButton(onClick = { error = null; webView?.reload() }) { Icon(Icons.Default.Refresh, "Recharger") }
             IconButton(onClick = {
-                CookieManager.getInstance().removeAllCookies { webView?.loadUrl(NOTEBOOKLM_URL) }
+                CookieManager.getInstance().removeAllCookies { webView?.loadUrl(LOGIN_URL) }
             }) { Icon(Icons.AutoMirrored.Filled.Logout, "Changer de compte") }
         }
     }) { padding ->
@@ -59,6 +76,19 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
+            Text(
+                Uri.parse(currentUrl.ifBlank { LOGIN_URL }).host.orEmpty(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            if (progress in 1..99) {
+                LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
+            }
+            error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
             AndroidView(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 factory = { ctx ->
@@ -72,12 +102,35 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
                             .replace("; wv", "")
                             .replace(Regex("Version/\\d+\\.\\d+ "), "")
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                        settings.javaScriptCanOpenWindowsAutomatically = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onProgressChanged(view: WebView, newProgress: Int) {
+                                progress = newProgress
+                            }
+                        }
                         webViewClient = object : WebViewClient() {
+                            override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                                currentUrl = url
+                                error = null
+                            }
                             override fun onPageFinished(view: WebView, url: String) {
                                 currentUrl = url
                             }
+                            override fun onReceivedError(view: WebView, request: WebResourceRequest, err: WebResourceError) {
+                                if (request.isForMainFrame) {
+                                    error = "Chargement impossible (${err.errorCode}) : ${err.description}. " +
+                                        "Vérifiez la connexion Internet puis rechargez."
+                                }
+                            }
+                            override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, resp: WebResourceResponse) {
+                                if (request.isForMainFrame && resp.statusCode >= 400) {
+                                    error = "Google a répondu ${resp.statusCode} sur ${request.url.host}."
+                                }
+                            }
                         }
-                        loadUrl(NOTEBOOKLM_URL)
+                        loadUrl(LOGIN_URL)
                         webView = this
                     }
                 },
@@ -88,12 +141,41 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
                     vm.sendGoogleSession(collectGoogleCookies()) { onBack() }
                 },
                 enabled = onNotebookLm,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp),
             ) {
                 Icon(Icons.Default.CloudUpload, null)
                 Text("  Envoyer la connexion à la passerelle")
             }
+            TextButton(onClick = { showPaste = true }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                Text("La page ne s'affiche pas ? Coller des cookies exportés")
+            }
         }
+    }
+
+    if (showPaste) {
+        var text by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showPaste = false },
+            title = { Text("Importer des cookies") },
+            text = {
+                Column {
+                    Text(
+                        "Sur un ordinateur, connectez-vous à notebooklm.google.com, exportez les cookies " +
+                            "au format JSON (extension Cookie-Editor → Export → JSON), puis collez-les ici.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(text, { text = it }, label = { Text("JSON des cookies") },
+                        modifier = Modifier.fillMaxWidth().height(180.dp).padding(top = 8.dp))
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = text.isNotBlank(), onClick = {
+                    showPaste = false
+                    vm.sendGoogleSession(text.trim()) { onBack() }
+                }) { Text("Envoyer") }
+            },
+            dismissButton = { TextButton(onClick = { showPaste = false }) { Text("Annuler") } },
+        )
     }
 }
 
