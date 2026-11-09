@@ -44,6 +44,7 @@ NOTEBOOKLM_PROFILE = os.environ.get("NOTEBOOKLM_PROFILE") or None
 UPLOAD_AS_PDF = os.environ.get("MESCOURS_UPLOAD_AS_PDF", "0") == "1"
 GENERATION_TIMEOUT = float(os.environ.get("MESCOURS_GENERATION_TIMEOUT", "420"))
 MAX_PAGES = 20
+DEBUG = os.environ.get("MESCOURS_DEBUG", "0") == "1"
 
 app = FastAPI(title="Mes Cours – passerelle NotebookLM", version="0.1.0")
 
@@ -51,8 +52,11 @@ app = FastAPI(title="Mes Cours – passerelle NotebookLM", version="0.1.0")
 @app.exception_handler(Exception)
 async def notebooklm_error(_request: Request, exc: Exception) -> JSONResponse:
     """Renvoie à l'app un message lisible plutôt qu'une erreur 500 muette."""
-    log.exception("Erreur NotebookLM")
-    text = str(exc) or exc.__class__.__name__
+    text = " ".join((str(exc) or exc.__class__.__name__).split())
+    # Une ligne lisible dans les journaux (PocketDock) ; trace complète seulement en mode debug.
+    log.error("%s %s → %s : %s", _request.method, _request.url.path, exc.__class__.__name__, text)
+    if DEBUG:
+        log.exception("Trace complète")
     if "auth" in exc.__class__.__name__.lower() or "storage" in text.lower() or "cookie" in text.lower():
         detail = f"Session NotebookLM absente ou expirée : dans l'app, Réglages → « Connecter mon compte Google ». ({text})"
     else:
@@ -154,7 +158,9 @@ async def import_cookies(request: Request, _: None = Depends(require_token)) -> 
     proc = subprocess.run(cmd, input=payload, capture_output=True, timeout=60)
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout).decode(errors="replace").strip()
+        log.error("Import des cookies refusé : %s", " ".join(err.split())[-400:])
         raise HTTPException(status_code=400, detail=f"Cookies refusés : {err[-400:]}")
+    log.info("Cookies Google importés (%d octets), vérification auprès de NotebookLM…", len(payload))
     async with client() as nlm:
         notebooks = await nlm.notebooks.list()
     return {"status": f"compte connecté ({len(notebooks)} carnets)"}

@@ -10,6 +10,7 @@ import fr.mescours.app.data.LibraryRepository
 import fr.mescours.app.data.SettingsStore
 import fr.mescours.app.engine.BridgeBundle
 import fr.mescours.app.engine.EngineException
+import fr.mescours.app.engine.GoogleSession
 import fr.mescours.app.engine.PocketDockClient
 import fr.mescours.app.engine.GeminiEngine
 import fr.mescours.app.engine.NotebookLmBridgeEngine
@@ -284,6 +285,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } finally {
             _busy.value = null
         }
+    }
+
+    /** Envoie la session de la WebView (après avoir fait émettre __Secure-1PSIDTS si besoin). */
+    fun sendWebViewSession(onSuccess: () -> Unit) = viewModelScope.launch {
+        _busy.value = "Préparation de la session Google…"
+        val export = try {
+            GoogleSession.export()
+        } catch (e: Exception) {
+            _busy.value = null
+            _message.value = "Lecture de la session Google impossible : ${e.message}"
+            return@launch
+        }
+        if ("__Secure-1PSIDTS" !in export.names) {
+            _busy.value = null
+            _message.value = "Google n'a pas fourni le cookie __Secure-1PSIDTS à l'app " +
+                "(cookies trouvés : ${export.names.sorted().joinToString(", ")}). " +
+                "Rechargez NotebookLM puis réessayez, ou utilisez « Coller des cookies exportés »."
+            return@launch
+        }
+        sendGoogleSession(export.json, onSuccess).join()
     }
 
     fun sendGoogleSession(storageStateJson: String, onSuccess: () -> Unit) = viewModelScope.launch {

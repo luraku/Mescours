@@ -37,10 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import fr.mescours.app.engine.GoogleSession
 import fr.mescours.app.ui.AppViewModel
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 private const val NOTEBOOKLM_URL = "https://notebook.google.com/"
 /** NotebookLM a changé d'adresse (notebooklm.google.com → notebook.google.com) : on accepte les deux. */
@@ -63,7 +61,7 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
     var showPaste by remember { mutableStateOf(false) }
     // Prêt dès que l'on est sur NotebookLM, ou dès que la session Google existe (cookie SID).
     val onNotebookLm = Uri.parse(currentUrl.ifBlank { "about:blank" }).host in NOTEBOOK_HOSTS ||
-        (currentUrl.isNotBlank() && isSignedInToGoogle())
+        (currentUrl.isNotBlank() && GoogleSession.isSignedIn())
 
     Scaffold(topBar = {
         BackTopBar("Connexion NotebookLM", onBack) {
@@ -140,10 +138,7 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
                 },
             )
             Button(
-                onClick = {
-                    CookieManager.getInstance().flush()
-                    vm.sendGoogleSession(collectGoogleCookies()) { onBack() }
-                },
+                onClick = { vm.sendWebViewSession { onBack() } },
                 enabled = onNotebookLm,
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp),
             ) {
@@ -181,46 +176,4 @@ fun NotebookLmLoginScreen(vm: AppViewModel, onBack: () -> Unit) {
             dismissButton = { TextButton(onClick = { showPaste = false }) { Text("Annuler") } },
         )
     }
-}
-
-/**
- * Construit un `storage_state` Playwright à partir des cookies de la WebView.
- * CookieManager ne donne que nom=valeur par URL : les cookies visibles sur www.google.com
- * sont rattachés à `.google.com`, les autres à l'hôte où ils apparaissent
- * (ex. OSID sur notebooklm.google.com, LSID sur accounts.google.com).
- */
-private fun collectGoogleCookies(): String {
-    val cm = CookieManager.getInstance()
-    fun read(url: String): Map<String, String> = cm.getCookie(url).orEmpty()
-        .split(";").mapNotNull { part ->
-            val i = part.indexOf('=')
-            if (i <= 0) null else part.substring(0, i).trim() to part.substring(i + 1).trim()
-        }.toMap()
-
-    val shared = read("https://www.google.com/")
-    val cookies = buildList {
-        shared.forEach { (n, v) -> add(cookie(n, v, ".google.com")) }
-        listOf("notebook.google.com", "notebooklm.google.com", "accounts.google.com").forEach { host ->
-            read("https://$host/").forEach { (n, v) -> if (shared[n] != v) add(cookie(n, v, host)) }
-        }
-    }
-    return buildJsonObject {
-        put("cookies", JsonArray(cookies))
-        put("origins", JsonArray(emptyList()))
-    }.toString()
-}
-
-private fun isSignedInToGoogle(): Boolean =
-    CookieManager.getInstance().getCookie("https://www.google.com/").orEmpty()
-        .split(";").any { it.trim().startsWith("SID=") }
-
-private fun cookie(name: String, value: String, domain: String) = buildJsonObject {
-    put("name", name)
-    put("value", value)
-    put("domain", domain)
-    put("path", "/")
-    put("expires", -1)
-    put("httpOnly", true)
-    put("secure", true)
-    put("sameSite", "Lax")
 }
