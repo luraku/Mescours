@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import fr.mescours.app.model.Exercise
 import fr.mescours.app.ui.AppViewModel
+import fr.mescours.app.ui.MathText
+import fr.mescours.app.util.MathFormat
 
 @Composable
 fun ExercisesScreen(vm: AppViewModel, courseId: String, themeId: String, onBack: () -> Unit) {
@@ -47,7 +49,7 @@ fun ExercisesScreen(vm: AppViewModel, courseId: String, themeId: String, onBack:
     }
 
     Scaffold(topBar = {
-        BackTopBar("Exercices · ${theme.title}", onBack) {
+        BackTopBar("Exercices · ${MathFormat.toPlainText(theme.title)}", onBack) {
             if (theme.exercises.isNotEmpty()) IconButton(onClick = { vm.generateExercises(course, theme) }) {
                 Icon(Icons.Default.Refresh, "Nouveaux exercices")
             }
@@ -83,16 +85,16 @@ private fun ExerciseCard(number: Int, ex: Exercise) {
                     modifier = Modifier.weight(1f))
                 AssistChip(onClick = {}, label = { Text(ex.difficulty) })
             }
-            Text(ex.statement, style = MaterialTheme.typography.bodyLarge)
+            MathText(ex.statement, style = MaterialTheme.typography.bodyLarge)
             Row {
                 if (ex.hint.isNotBlank()) TextButton(onClick = { showHint = !showHint }) { Text(if (showHint) "Masquer l'indice" else "Indice") }
                 TextButton(onClick = { showSolution = !showSolution }) { Text(if (showSolution) "Masquer la correction" else "Voir la correction") }
             }
-            if (showHint) Text("💡 ${ex.hint}", style = MaterialTheme.typography.bodyMedium)
+            if (showHint) MathText("💡 ${ex.hint}", style = MaterialTheme.typography.bodyMedium)
             if (showSolution) {
                 HorizontalDivider()
                 Text("Correction", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
-                Text(ex.solution, style = MaterialTheme.typography.bodyMedium)
+                MathText(ex.solution, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }

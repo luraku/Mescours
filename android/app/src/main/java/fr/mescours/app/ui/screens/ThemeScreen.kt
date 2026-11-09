@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import fr.mescours.app.ui.AppViewModel
+import fr.mescours.app.ui.MathText
+import fr.mescours.app.util.MathFormat
 import fr.mescours.app.ui.theme.subjectColor
 
 /** Fiche de révision d'un thème + accès au quiz et aux exercices. */
@@ -51,7 +53,7 @@ fun ThemeScreen(
     }
     val color = subjectColor(course.subject)
 
-    Scaffold(topBar = { BackTopBar(theme.title, onBack) }) { padding ->
+    Scaffold(topBar = { BackTopBar(MathFormat.toPlainText(theme.title), onBack) }) { padding ->
         LazyColumn(
             Modifier.padding(padding),
             contentPadding = PaddingValues(16.dp),
@@ -65,8 +67,8 @@ fun ThemeScreen(
                     Column(Modifier.padding(20.dp).fillMaxWidth()) {
                         Text(course.subject.uppercase() + " · " + course.title, color = Color.White.copy(alpha = 0.85f),
                             style = MaterialTheme.typography.labelMedium)
-                        Text(theme.title, color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text(theme.summary, color = Color.White, style = MaterialTheme.typography.bodyMedium,
+                        MathText(theme.title, color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        MathText(theme.summary, color = Color.White, style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 8.dp))
                     }
                 }
@@ -92,7 +94,7 @@ fun ThemeScreen(
                 items(theme.keyPoints) { p ->
                     Row {
                         Text("•  ", color = color, fontWeight = FontWeight.Bold)
-                        Text(p, style = MaterialTheme.typography.bodyLarge)
+                        MathText(p, style = MaterialTheme.typography.bodyLarge)
                     }
                 }
             }
@@ -101,15 +103,15 @@ fun ThemeScreen(
                 items(theme.vocabulary) { t ->
                     Card(colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.10f))) {
                         Column(Modifier.padding(12.dp).fillMaxWidth()) {
-                            Text(t.term, fontWeight = FontWeight.Bold, color = color)
-                            Text(t.definition, style = MaterialTheme.typography.bodyMedium)
+                            MathText(t.term, fontWeight = FontWeight.Bold, color = color)
+                            MathText(t.definition, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
             }
             if (theme.examples.isNotEmpty()) {
                 item { SectionTitle("Exemples") }
-                items(theme.examples) { e -> Text("→ $e", style = MaterialTheme.typography.bodyMedium) }
+                items(theme.examples) { e -> MathText("→ $e", style = MaterialTheme.typography.bodyMedium) }
             }
         }
     }

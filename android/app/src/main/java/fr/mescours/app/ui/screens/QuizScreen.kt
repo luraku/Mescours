@@ -41,6 +41,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import fr.mescours.app.ui.AppViewModel
+import fr.mescours.app.ui.MathText
+import fr.mescours.app.util.MathFormat
 
 private val Good = Color(0xFF2F9E44)
 private val Bad = Color(0xFFE03131)
@@ -65,7 +67,7 @@ fun QuizScreen(vm: AppViewModel, courseId: String, themeId: String, onBack: () -
     var showHint by rememberSaveable(quizKey, index) { mutableStateOf(false) }
 
     Scaffold(topBar = {
-        BackTopBar("Quiz · ${theme.title}", onBack) {
+        BackTopBar("Quiz · ${MathFormat.toPlainText(theme.title)}", onBack) {
             if (quiz.isNotEmpty()) IconButton(onClick = { vm.generateQuiz(course, theme) }) {
                 Icon(Icons.Default.Refresh, "Nouveau quiz")
             }
@@ -107,7 +109,7 @@ fun QuizScreen(vm: AppViewModel, courseId: String, themeId: String, onBack: () -
                     LinearProgressIndicator(progress = { index / quiz.size.toFloat() }, modifier = Modifier.fillMaxWidth())
                     Text("Question ${index + 1} / ${quiz.size}", style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(q.question, style = MaterialTheme.typography.titleLarge)
+                    MathText(q.question, style = MaterialTheme.typography.titleLarge)
                     q.options.forEachIndexed { i, option ->
                         val answered = selected != null
                         val border = when {
@@ -130,18 +132,18 @@ fun QuizScreen(vm: AppViewModel, courseId: String, themeId: String, onBack: () -
                         ) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("${'A' + i}  ", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text(option, style = MaterialTheme.typography.bodyLarge)
+                                MathText(option, style = MaterialTheme.typography.bodyLarge)
                             }
                         }
                     }
                     if (selected == null && q.hint.isNotBlank()) {
-                        TextButton(onClick = { showHint = !showHint }) { Text(if (showHint) q.hint else "Besoin d'un indice ?") }
+                        TextButton(onClick = { showHint = !showHint }) { MathText(if (showHint) q.hint else "Besoin d'un indice ?") }
                     }
                     if (selected != null) {
                         val correct = selected == q.correctIndex
                         Text(if (correct) "Bonne réponse !" else "Pas tout à fait…",
                             color = if (correct) Good else Bad, fontWeight = FontWeight.Bold)
-                        if (q.explanation.isNotBlank()) Text(q.explanation, style = MaterialTheme.typography.bodyMedium)
+                        if (q.explanation.isNotBlank()) MathText(q.explanation, style = MaterialTheme.typography.bodyMedium)
                         Button(onClick = { index++; selected = null }, Modifier.fillMaxWidth()) {
                             Text(if (index + 1 < quiz.size) "Question suivante" else "Voir mon score")
                         }

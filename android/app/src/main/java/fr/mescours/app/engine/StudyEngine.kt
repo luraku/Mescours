@@ -37,6 +37,9 @@ internal fun extractJsonObject(text: String): String {
 
 /** Consignes communes, partagées par les deux moteurs (et reprises côté passerelle). */
 object Prompts {
+    /** Notation mathématique que l'app sait afficher proprement (fractions empilées, symboles). */
+    private const val MATH = "Pour toute formule, utilise la notation LaTeX entre \$ (ex. \$\\frac{2}{3}\$, \$3 \\times 4\$, \$x^{2}\$) ; reste simple et adapté à un enfant."
+
     fun structure(subject: String, grade: String) = """
 Tu es un professeur bienveillant qui prépare des fiches de révision pour un élève de $grade en $subject.
 Les images sont des photos de cahier ou de manuel (écriture manuscrite possible).
@@ -49,6 +52,7 @@ Les images sont des photos de cahier ou de manuel (écriture manuscrite possible
    - "vocabulary" : mots ou notions clés avec leur définition ("term", "definition"),
    - "examples" : exemples ou applications tirés du cours.
 Reste strictement fidèle au cours ; écris en français.
+$MATH
 """.trimIndent()
 
     fun quiz(subject: String, grade: String, themeTitle: String, count: Int) = """
@@ -57,6 +61,7 @@ pour un élève de $grade en $subject, uniquement sur le thème « $themeTitle �
 Varie les types de questions (définitions, compréhension, application). Pour chaque question :
 "question", "options" (4 propositions), "correctIndex" (0 à 3), "explanation" (pourquoi c'est la bonne réponse),
 "hint" (un indice qui ne donne pas la réponse). Écris en français, niveau adapté à $grade.
+$MATH
 """.trimIndent()
 
     fun exercises(subject: String, grade: String, themeTitle: String, count: Int) = """
@@ -64,6 +69,7 @@ Crée $count exercices progressifs (du plus facile au plus difficile) pour un é
 uniquement sur le thème « $themeTitle » du cours fourni. Pour chaque exercice :
 "statement" (énoncé complet), "hint" (coup de pouce), "solution" (correction détaillée, étape par étape),
 "difficulty" ("facile", "moyen" ou "difficile"). Écris en français, niveau adapté à $grade.
+$MATH
 """.trimIndent()
 
     fun themeContext(course: Course, theme: Theme): String = buildString {

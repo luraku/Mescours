@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import fr.mescours.app.model.Course
 import fr.mescours.app.ui.AppViewModel
+import fr.mescours.app.ui.MathText
 import fr.mescours.app.ui.theme.subjectColor
 import java.text.DateFormat
 import java.util.Date
@@ -85,9 +86,9 @@ fun SubjectScreen(vm: AppViewModel, subject: String, onBack: () -> Unit, onOpenT
                         colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.12f)),
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Text(theme.title, style = MaterialTheme.typography.titleMedium, color = color, fontWeight = FontWeight.Bold)
+                            MathText(theme.title, style = MaterialTheme.typography.titleMedium, color = color, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.padding(2.dp))
-                            Text(theme.summary, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                            MathText(theme.summary, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                             Row(Modifier.padding(top = 8.dp)) {
                                 AssistChip(onClick = { onOpenTheme(course.id, theme.id) }, label = { Text("${theme.keyPoints.size} points clés") })
                                 Spacer(Modifier.width(8.dp))
