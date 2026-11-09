@@ -112,6 +112,34 @@ class PocketDockClient(baseUrl: String, private val token: String) {
         send("POST", "/containers/run", body.toString().toRequestBody(JSON), slow = true)
     }
 
+    /** Passerelle déjà déployée : jeton (variable BRIDGE_TOKEN) et port publié sur le téléphone. */
+    data class ExistingBridge(val name: String, val token: String, val port: Int)
+
+    /**
+     * Cherche le conteneur de la passerelle (nom ou image « mescours-bridge », ou port interne 8765)
+     * via l'API Docker de PocketDock, puis lit son jeton et son port publié.
+     */
+    suspend fun findBridge(): ExistingBridge? {
+        val list = getJson("/docker/containers/json?all=1") as? JsonArray ?: return null
+        val candidates = list.mapNotNull { it as? JsonObject }
+        val match = candidates.firstOrNull { c ->
+            val names = (c["Names"] as? JsonArray)?.joinToString(" ") { (it as? JsonPrimitive)?.contentOrNull.orEmpty() }.orEmpty()
+            "mescours-bridge" in names || "mescours-bridge" in c.str("Image").orEmpty()
+        } ?: candidates.firstOrNull { c ->
+            (c["Ports"] as? JsonArray)?.any { ((it as? JsonObject)?.get("PrivatePort") as? JsonPrimitive)?.intOrNull == 8765 } == true
+        } ?: return null
+        val id = match.str("Id") ?: return null
+        val inspect = getJson("/docker/containers/$id/json") as? JsonObject ?: return null
+        val env = ((inspect["Config"] as? JsonObject)?.get("Env") as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.orEmpty()
+        val token = env.firstOrNull { it.startsWith("BRIDGE_TOKEN=") }?.substringAfter("=").orEmpty()
+        val bindings = ((inspect["HostConfig"] as? JsonObject)?.get("PortBindings") as? JsonObject)
+        val hostPort = (bindings?.get("8765/tcp") as? JsonArray)?.firstOrNull()
+            ?.let { ((it as? JsonObject)?.get("HostPort") as? JsonPrimitive)?.contentOrNull?.toIntOrNull() }
+        val name = (inspect.str("Name") ?: id.take(12)).removePrefix("/")
+        return ExistingBridge(name, token, hostPort ?: 8765)
+    }
+
     private fun jsonBody(vararg pairs: Pair<String, String>) =
         buildJsonObject { pairs.forEach { (k, v) -> put(k, v) } }.toString().toRequestBody(JSON)
 

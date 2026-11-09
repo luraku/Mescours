@@ -30,6 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.ui.unit.dp
 import fr.mescours.app.data.EngineType
 import fr.mescours.app.ui.AppViewModel
@@ -50,8 +56,16 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -
     // L'installation via PocketDock renseigne elle-même l'adresse et le jeton de la passerelle.
     val saved by vm.settings.collectAsState()
     LaunchedEffect(saved.bridgeUrl, saved.bridgeToken) {
-        if (saved.bridgeUrl.isNotBlank()) bridgeUrl = saved.bridgeUrl
-        if (saved.bridgeToken.isNotBlank()) bridgeToken = saved.bridgeToken
+        bridgeUrl = saved.bridgeUrl
+        bridgeToken = saved.bridgeToken
+    }
+    var showSecrets by remember { mutableStateOf(false) }
+    val secretTransform = if (showSecrets) VisualTransformation.None else PasswordVisualTransformation()
+    val eye: @Composable () -> Unit = {
+        IconButton(onClick = { showSecrets = !showSecrets }) {
+            Icon(if (showSecrets) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                if (showSecrets) "Masquer" else "Afficher")
+        }
     }
 
     Scaffold(topBar = { BackTopBar("Réglages", onBack) }) { padding ->
@@ -79,8 +93,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -
             HorizontalDivider()
             Text("Gemini", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("Clé gratuite sur aistudio.google.com → « Get API key ».", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(apiKey, { apiKey = it }, label = { Text("Clé API Gemini") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(apiKey, { apiKey = it }, label = { Text("Clé API Gemini") }, singleLine = true, trailingIcon = eye,
+                visualTransformation = secretTransform, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(model, { model = it }, label = { Text("Modèle") }, singleLine = true,
                 modifier = Modifier.fillMaxWidth())
 
@@ -93,8 +107,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -
             )
             OutlinedTextField(pdUrl, { pdUrl = it }, label = { Text("Adresse de l'API PocketDock") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(pdToken, { pdToken = it }, label = { Text("Jeton PocketDock") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(pdToken, { pdToken = it }, label = { Text("Jeton PocketDock") }, singleLine = true, trailingIcon = eye,
+                visualTransformation = secretTransform, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.testPocketDock(current()) }, enabled = pdToken.isNotBlank()) { Text("Tester") }
                 Button(onClick = {
@@ -102,6 +116,11 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -
                     vm.installBridgeOnPocketDock(current())
                 }, enabled = pdToken.isNotBlank()) { Text("Installer la passerelle") }
             }
+            OutlinedButton(
+                onClick = { vm.saveSettings(current()); vm.adoptExistingBridge(current()) },
+                enabled = pdToken.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Récupérer la passerelle déjà installée (adresse + jeton)") }
 
             HorizontalDivider()
             Text("Passerelle NotebookLM", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -112,8 +131,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit, onNotebookLmLogin: () -
             )
             OutlinedTextField(bridgeUrl, { bridgeUrl = it }, label = { Text("Adresse de la passerelle") }, placeholder = { Text("http://127.0.0.1:8765") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(bridgeToken, { bridgeToken = it }, label = { Text("Jeton d'accès (BRIDGE_TOKEN)") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(bridgeToken, { bridgeToken = it }, label = { Text("Jeton d'accès (BRIDGE_TOKEN)") }, singleLine = true, trailingIcon = eye,
+                visualTransformation = secretTransform, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.testBridge(current()) }, enabled = bridgeUrl.isNotBlank()) {
                     Text("Tester")

@@ -181,6 +181,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Récupère l'adresse et le jeton d'une passerelle déjà déployée dans PocketDock. */
+    fun adoptExistingBridge(s: AppSettings) = viewModelScope.launch {
+        _busy.value = "Recherche de la passerelle dans PocketDock…"
+        try {
+            val pd = pocketDock(s)
+            ensureEngineRunning(pd)
+            val found = pd.findBridge()
+                ?: throw EngineException("Aucun conteneur de passerelle trouvé dans PocketDock : utilisez « Installer la passerelle ».")
+            val updated = s.copy(bridgeUrl = "http://127.0.0.1:${found.port}", bridgeToken = found.token)
+            persistSettings(updated)
+            _message.value = "Passerelle « ${found.name} » récupérée : ${updated.bridgeUrl}" +
+                if (found.token.isBlank()) " (sans jeton)." else ", jeton enregistré."
+        } catch (e: Exception) {
+            _message.value = e.message ?: "Erreur pendant la recherche de la passerelle"
+        } finally {
+            _busy.value = null
+        }
+    }
+
     private suspend fun runBridgeContainer(pd: PocketDockClient, token: String) = pd.runContainer(
         image = BridgeBundle.IMAGE,
         name = PocketDockClient.CONTAINER_NAME,
