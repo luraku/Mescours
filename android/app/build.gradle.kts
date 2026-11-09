@@ -5,6 +5,43 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// ------------------------------------------------------------------ nlm-core (Rust)
+// Client NotebookLM natif : bibliothèques .so (cargo-ndk) + bindings Kotlin (UniFFI).
+val rustDir = rootProject.file("../nlm-core")
+val rustJniDir = layout.buildDirectory.dir("generated/rustJniLibs")
+val uniffiDir = layout.buildDirectory.dir("generated/uniffi/kotlin")
+val hostLibExt = if (System.getProperty("os.name").lowercase().contains("mac")) "dylib" else "so"
+
+val cargoNdkBuild by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Compile nlm-core pour Android (arm64-v8a, x86_64)."
+    workingDir = rustDir
+    inputs.dir(rustDir.resolve("src"))
+    inputs.file(rustDir.resolve("Cargo.toml"))
+    outputs.dir(rustJniDir)
+    commandLine(
+        "cargo", "ndk", "-t", "arm64-v8a", "-t", "x86_64", "-P", "26",
+        "-o", rustJniDir.get().asFile.absolutePath, "build", "--release", "--lib",
+    )
+}
+
+val uniffiBindings by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Génère les bindings Kotlin de nlm-core (UniFFI)."
+    workingDir = rustDir
+    inputs.dir(rustDir.resolve("src"))
+    inputs.file(rustDir.resolve("Cargo.toml"))
+    outputs.dir(uniffiDir)
+    commandLine(
+        "sh", "-c",
+        "cargo build --lib && cargo build --features bindgen --bin uniffi-bindgen && " +
+            "./target/debug/uniffi-bindgen generate --library target/debug/libnlm_core.$hostLibExt " +
+            "--language kotlin --no-format --out-dir '${uniffiDir.get().asFile.absolutePath}'",
+    )
+}
+
+tasks.named("preBuild") { dependsOn(cargoNdkBuild, uniffiBindings) }
+
 android {
     namespace = "fr.mescours.app"
     compileSdk = 35
@@ -53,6 +90,9 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    sourceSets["main"].java.srcDir(uniffiDir.get().asFile)
+    sourceSets["main"].jniLibs.srcDir(rustJniDir.get().asFile)
+
     buildFeatures {
         compose = true
     }
@@ -78,4 +118,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // Requis par les bindings UniFFI de nlm-core.
+    implementation("net.java.dev.jna:jna:5.15.0@aar")
 }

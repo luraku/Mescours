@@ -3,9 +3,9 @@ name: APK Android
 on:
   push:
     branches: ["**"]
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths: ["android/**", "nlm-core/**", ".github/workflows/android.yml"]
   pull_request:
-    paths: ["android/**"]
+    paths: ["android/**", "nlm-core/**"]
   workflow_dispatch:
 
 jobs:
@@ -23,6 +23,22 @@ jobs:
           java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v4
+
+      # nlm-core : client NotebookLM natif (Rust), compilé pour Android par Gradle.
+      - name: Rust (cibles Android, cargo-ndk)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --locked
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: nlm-core
+
+      - name: Tests nlm-core
+        working-directory: nlm-core
+        run: cargo test
 
       - name: Construire l'APK debug
         run: ./gradlew --no-daemon assembleDebug
