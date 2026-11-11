@@ -16,6 +16,8 @@ jobs:
         working-directory: android
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # versionCode = nombre de commits
 
       - uses: actions/setup-java@v4
         with:
@@ -41,7 +43,7 @@ jobs:
         run: cargo test
 
       - name: Construire l'APK debug
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleDebug -PversionCode=$(git rev-list --count HEAD)
 
       # Signature release optionnelle : ajoutez les secrets KEYSTORE_BASE64,
       # KEYSTORE_PASSWORD, KEY_ALIAS et KEY_PASSWORD dans les réglages du dépôt.

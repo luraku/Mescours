@@ -50,8 +50,10 @@ android {
         applicationId = "fr.mescours.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // Fournis par la CI : versionCode = nombre de commits (toujours croissant, pour que
+        // chaque APK s'installe par-dessus la précédente), versionName = version publiée.
+        versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (findProperty("versionName") as String?) ?: "0.1.0-dev"
     }
 
     // Signature "release" optionnelle : fournie par des variables d'environnement
@@ -80,7 +82,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (keystorePath != null) signingConfig = signingConfigs.getByName("release")
+            // Sans clé privée fournie, la release est signée avec la clé fixe du dépôt :
+            // elle s'installe alors par-dessus les APK debug existantes.
+            signingConfig = signingConfigs.getByName(if (keystorePath != null) "release" else "debug")
         }
     }
     compileOptions {
