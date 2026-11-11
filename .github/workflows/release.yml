@@ -1,7 +1,11 @@
 name: Release
 
-# Publie une release GitHub avec l'APK : lancer « Run workflow » avec la version (ex. 0.1.0),
-# ou pousser un tag v0.1.0. Les notes viennent de la section correspondante de CHANGELOG.md.
+# Publie une release GitHub avec l'APK. Trois déclencheurs :
+#  - ajouter une section « ## vX.Y.Z » en tête de CHANGELOG.md et pousser (la version la plus
+#    récente du CHANGELOG est publiée si sa release n'existe pas encore) ;
+#  - « Run workflow » avec la version (ex. 0.1.0) ;
+#  - pousser un tag vX.Y.Z.
+# Les notes viennent de la section correspondante de CHANGELOG.md.
 on:
   workflow_dispatch:
     inputs:
@@ -14,6 +18,8 @@ on:
         default: false
   push:
     tags: ["v*"]
+    branches: ["**"]
+    paths: ["CHANGELOG.md"]
 
 permissions:
   contents: write
@@ -29,8 +35,18 @@ jobs:
           fetch-depth: 0
 
       - name: Version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           v="${VERSION#v}"
+          # Push sur une branche : version = première section « ## vX.Y.Z » du CHANGELOG.
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_type }}" = "branch" ]; then
+            v=$(grep -m1 -oE '^## v[0-9]+\.[0-9]+\.[0-9]+[^ ]*' CHANGELOG.md | sed 's/^## v//')
+            if gh release view "v$v" >/dev/null 2>&1; then
+              echo "La release v$v existe déjà : rien à publier."
+              echo "SKIP=1" >> "$GITHUB_ENV"
+            fi
+          fi
           echo "VERSION=$v" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
           # Notes : section « ## v<version> » de CHANGELOG.md.
@@ -38,13 +54,16 @@ jobs:
           test -s notes.md || echo "Version $v" > notes.md
 
       - uses: actions/setup-java@v4
+        if: env.SKIP != '1'
         with:
           distribution: temurin
           java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v4
+        if: env.SKIP != '1'
 
       - name: Rust (cibles Android, cargo-ndk)
+        if: env.SKIP != '1'
         run: |
           rustup toolchain install stable --profile minimal
           rustup target add aarch64-linux-android x86_64-linux-android
@@ -52,22 +71,25 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
 
       - uses: Swatinem/rust-cache@v2
+        if: env.SKIP != '1'
         with:
           workspaces: nlm-core
 
       - name: Tests nlm-core
+        if: env.SKIP != '1'
         working-directory: nlm-core
         run: cargo test
 
       - name: Clé de signature privée (optionnelle)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        if: env.SKIP != '1' && env.KEYSTORE_BASE64 != ''
         run: |
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/mescours.jks"
           echo "MESCOURS_KEYSTORE=$RUNNER_TEMP/mescours.jks" >> "$GITHUB_ENV"
 
       - name: Construire l'APK release
+        if: env.SKIP != '1'
         working-directory: android
         env:
           MESCOURS_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -78,6 +100,7 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/MesCours-v$VERSION.apk"
 
       - name: Publier la release
+        if: env.SKIP != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

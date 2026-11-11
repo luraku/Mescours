@@ -1,6 +1,6 @@
 # Journal des versions
 
-## v0.1.0 — première version
+## v0.1.0 — première version (11/11/2026)
 
 Application Android pour réviser les cours des enfants, dans l'esprit de Knowunity.
 
