@@ -1,2 +1,3 @@
 # Mescours
-Application pour utiliser l’ia pour faire les cours et des exercices 
+Application pour utiliser l’ia pour générer des quizz résumés et produire les cours et exercices a partir des photos 📷 
+
